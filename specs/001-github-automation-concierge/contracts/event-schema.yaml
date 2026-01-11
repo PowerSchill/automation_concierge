@@ -1,0 +1,121 @@
+# Event Schema
+# JSON Schema for canonical Event model
+# Used for internal processing and audit logging
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://github.com/PowerSchill/automation_concierge/event-schema.yaml"
+title: "Concierge Event"
+description: "Canonical event model normalized from GitHub API responses"
+type: object
+
+required:
+  - id
+  - github_id
+  - event_type
+  - timestamp
+  - source
+  - actor
+  - subject
+  - url
+  - received_at
+
+properties:
+  id:
+    type: string
+    description: "Unique event identifier (e.g., 'notif_123456')"
+    pattern: "^[a-z]+_[a-zA-Z0-9]+$"
+
+  github_id:
+    type: string
+    description: "Original GitHub notification/event ID"
+
+  event_type:
+    $ref: "#/$defs/EventType"
+
+  timestamp:
+    type: string
+    format: date-time
+    description: "When event occurred on GitHub (ISO-8601 UTC)"
+
+  source:
+    $ref: "#/$defs/EventSource"
+
+  actor:
+    type: string
+    description: "GitHub username who triggered the event"
+
+  subject:
+    type: string
+    description: "Title of the issue/PR"
+    maxLength: 500
+
+  url:
+    type: string
+    format: uri
+    description: "GitHub web URL for the issue/PR"
+
+  payload:
+    type: object
+    description: "Raw GitHub payload (preserved for debugging)"
+
+  received_at:
+    type: string
+    format: date-time
+    description: "When we received the event (ISO-8601 UTC)"
+
+$defs:
+  EventType:
+    type: string
+    enum:
+      - mention
+      - assignment
+      - review_request
+      - label_change
+      - pr_open
+      - issue_open
+      - comment
+      - review
+    description: "Type of GitHub activity"
+
+  EventSource:
+    type: object
+    description: "Source repository and issue/PR information"
+    required:
+      - owner
+      - repo
+      - type
+      - number
+    properties:
+      owner:
+        type: string
+        description: "Repository owner"
+        pattern: "^[a-zA-Z0-9][a-zA-Z0-9-]*$"
+      repo:
+        type: string
+        description: "Repository name"
+        pattern: "^[a-zA-Z0-9._-]+$"
+      type:
+        type: string
+        enum: ["issue", "pull_request"]
+        description: "Whether source is an issue or PR"
+      number:
+        type: integer
+        minimum: 1
+        description: "Issue/PR number"
+    additionalProperties: false
+
+examples:
+  - id: "notif_123456789"
+    github_id: "123456789"
+    event_type: "mention"
+    timestamp: "2026-01-10T15:30:00Z"
+    source:
+      owner: "octocat"
+      repo: "hello-world"
+      type: "issue"
+      number: 42
+    actor: "collaborator"
+    subject: "Bug: Something is broken"
+    url: "https://github.com/octocat/hello-world/issues/42"
+    payload: {}
+    received_at: "2026-01-10T15:31:00Z"

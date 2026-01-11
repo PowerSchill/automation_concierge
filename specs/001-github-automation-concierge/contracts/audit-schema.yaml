@@ -1,0 +1,155 @@
+# Audit Log Schema
+# JSON Schema for audit log entries
+# Enables debugging and explainability
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://github.com/PowerSchill/automation_concierge/audit-schema.yaml"
+title: "Concierge Audit Log Entry"
+description: "Full decision trail for debugging and explainability"
+type: object
+
+required:
+  - timestamp
+  - disposition
+  - message
+
+properties:
+  timestamp:
+    type: string
+    format: date-time
+    description: "When this entry was created (ISO-8601 UTC)"
+
+  event_id:
+    type: string
+    description: "Event ID (nullable for system events)"
+
+  event_type:
+    $ref: "#/$defs/EventType"
+
+  event_source:
+    type: string
+    description: "Formatted source (e.g., 'owner/repo#123')"
+
+  rules_evaluated:
+    type: array
+    description: "List of rules evaluated against this event"
+    items:
+      $ref: "#/$defs/RuleEvaluation"
+
+  actions_taken:
+    type: array
+    description: "List of actions executed"
+    items:
+      $ref: "#/$defs/ActionSummary"
+
+  disposition:
+    $ref: "#/$defs/Disposition"
+
+  message:
+    type: string
+    description: "Human-readable summary"
+
+$defs:
+  EventType:
+    type: string
+    enum:
+      - mention
+      - assignment
+      - review_request
+      - label_change
+      - pr_open
+      - issue_open
+      - comment
+      - review
+
+  Disposition:
+    type: string
+    enum:
+      - action_executed
+      - no_match
+      - dry_run
+      - error
+      - skipped
+    description: "Final disposition of the event"
+
+  RuleEvaluation:
+    type: object
+    required:
+      - rule_id
+      - rule_name
+      - matched
+      - match_reason
+    properties:
+      rule_id:
+        type: string
+        description: "Rule identifier"
+      rule_name:
+        type: string
+        description: "Human-readable rule name"
+      matched:
+        type: boolean
+        description: "Whether rule matched the event"
+      match_reason:
+        type: string
+        description: "Human-readable explanation of match/no-match"
+    additionalProperties: false
+
+  ActionSummary:
+    type: object
+    required:
+      - action_type
+      - target
+      - result
+    properties:
+      action_type:
+        $ref: "#/$defs/ActionType"
+      target:
+        type: string
+        description: "Where action was sent (e.g., 'slack:#channel')"
+      result:
+        $ref: "#/$defs/ResultStatus"
+      message_preview:
+        type: string
+        maxLength: 100
+        description: "First 100 chars of message"
+      error:
+        type: string
+        description: "Error message if failed"
+    additionalProperties: false
+
+  ActionType:
+    type: string
+    enum:
+      - console
+      - slack
+      - github_comment
+
+  ResultStatus:
+    type: string
+    enum:
+      - success
+      - failed
+      - skipped
+      - dry_run
+
+examples:
+  - timestamp: "2026-01-10T15:30:00Z"
+    event_id: "notif_123456789"
+    event_type: "mention"
+    event_source: "octocat/hello-world#42"
+    rules_evaluated:
+      - rule_id: "mention-notify"
+        rule_name: "Notify on mentions"
+        matched: true
+        match_reason: "event_type=mention"
+      - rule_id: "stale-pr-reminder"
+        rule_name: "Stale PR reminder"
+        matched: false
+        match_reason: "event_type != pr_open"
+    actions_taken:
+      - action_type: "slack"
+        target: "slack:#notifications"
+        result: "success"
+        message_preview: "You were mentioned in octocat/hello-world#42"
+    disposition: "action_executed"
+    message: "Processed mention event, triggered 1 action"
