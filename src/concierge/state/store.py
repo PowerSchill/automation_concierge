@@ -447,3 +447,134 @@ class StateStore:
         cursor = conn.execute("SELECT COUNT(*) FROM audit_log")
         row = cursor.fetchone()
         return row[0] if row else 0
+
+    # -------------------------------------------------------------------------
+    # Time-Based Threshold Operations (T076)
+    # -------------------------------------------------------------------------
+
+    def has_threshold_fired(
+        self,
+        entity_id: str,
+        rule_id: str,
+        threshold: str,
+    ) -> bool:
+        """Check if a threshold has already fired for an entity+rule pair.
+
+        This provides time-based deduplication: once a threshold (e.g., "48h")
+        is crossed for an entity, we don't re-trigger until conditions change.
+
+        The dedupe key format is: "{entity_id}:{rule_id}:{threshold}"
+
+        Args:
+            entity_id: Entity identifier (e.g., "owner/repo#123")
+            rule_id: Rule identifier
+            threshold: Threshold string (e.g., "48h", "7d")
+
+        Returns:
+            True if threshold was already fired
+        """
+        dedupe_key = self._make_threshold_key(entity_id, rule_id, threshold)
+        conn = self._get_connection()
+        cursor = conn.execute(
+            """
+            SELECT 1 FROM action_history
+            WHERE event_id = ? AND rule_id = ?
+            """,
+            (dedupe_key, rule_id),
+        )
+        return cursor.fetchone() is not None
+
+    def record_threshold_fired(
+        self,
+        entity_id: str,
+        rule_id: str,
+        threshold: str,
+        action_type: str,
+        result: ResultStatus,
+        message: str | None = None,
+    ) -> None:
+        """Record that a threshold has been crossed and action taken.
+
+        Once recorded, has_threshold_fired() will return True for this
+        entity+rule+threshold combination.
+
+        Args:
+            entity_id: Entity identifier (e.g., "owner/repo#123")
+            rule_id: Rule identifier
+            threshold: Threshold string (e.g., "48h")
+            action_type: Type of action executed
+            result: Result status of the action
+            message: Optional action message
+        """
+        dedupe_key = self._make_threshold_key(entity_id, rule_id, threshold)
+        self.record_action(
+            event_id=dedupe_key,
+            rule_id=rule_id,
+            action_type=action_type,
+            result=result,
+            message=message,
+        )
+        logger.debug(
+            "Recorded threshold fired: entity=%s rule=%s threshold=%s",
+            entity_id,
+            rule_id,
+            threshold,
+        )
+
+    def clear_threshold_fired(
+        self,
+        entity_id: str,
+        rule_id: str,
+        threshold: str,
+    ) -> bool:
+        """Clear a threshold record, allowing it to fire again.
+
+        Call this when conditions change (e.g., PR was reviewed after
+        the "no review in 48h" rule fired, and now it's been 48h since
+        that review with no new reviews).
+
+        Args:
+            entity_id: Entity identifier
+            rule_id: Rule identifier
+            threshold: Threshold string
+
+        Returns:
+            True if a record was deleted, False if none existed
+        """
+        dedupe_key = self._make_threshold_key(entity_id, rule_id, threshold)
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM action_history
+                WHERE event_id = ? AND rule_id = ?
+                """,
+                (dedupe_key, rule_id),
+            )
+            deleted = cursor.rowcount > 0
+        if deleted:
+            logger.debug(
+                "Cleared threshold record: entity=%s rule=%s threshold=%s",
+                entity_id,
+                rule_id,
+                threshold,
+            )
+        return deleted
+
+    @staticmethod
+    def _make_threshold_key(entity_id: str, rule_id: str, threshold: str) -> str:
+        """Create a unique key for threshold deduplication.
+
+        The key format is designed to be unique across:
+        - Different entities (same rule, same threshold)
+        - Same entity, different rules
+        - Same entity, same rule, different thresholds
+
+        Args:
+            entity_id: Entity identifier
+            rule_id: Rule identifier
+            threshold: Threshold string
+
+        Returns:
+            Unique dedupe key string
+        """
+        return f"threshold:{entity_id}:{rule_id}:{threshold}"

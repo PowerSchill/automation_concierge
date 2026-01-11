@@ -7,6 +7,7 @@ This module provides the GitHubClient class which handles:
 - Exponential backoff for transient failures (5xx, network errors)
 - Secondary rate limit (abuse detection) handling
 - Lookback window for first run
+- Entity cache for PR/issue details within poll cycles (T075)
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import asyncio
 import logging
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -148,6 +149,107 @@ class RateLimitInfo:
         return max(0, delta)
 
 
+@dataclass
+class EntityCache:
+    """Cache for PR/issue details within a poll cycle (T075).
+
+    This cache stores fetched entity data to avoid repeated API calls
+    for the same entity within a single poll cycle. The cache is cleared
+    at the start of each poll cycle.
+
+    The cache uses a dict with keys in the format "owner/repo#number"
+    to store both issues and pull requests.
+    """
+
+    _cache: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    _hits: int = 0
+    _misses: int = 0
+
+    def get(self, owner: str, repo: str, number: int) -> dict[str, Any] | None:
+        """Get cached entity data if available.
+
+        Args:
+            owner: Repository owner.
+            repo: Repository name.
+            number: Issue/PR number.
+
+        Returns:
+            Cached entity data or None if not cached.
+        """
+        key = self._make_key(owner, repo, number)
+        data = self._cache.get(key)
+        if data is not None:
+            self._hits += 1
+            logger.debug("Entity cache hit: %s", key)
+        else:
+            self._misses += 1
+            logger.debug("Entity cache miss: %s", key)
+        return data
+
+    def put(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        data: dict[str, Any],
+    ) -> None:
+        """Store entity data in cache.
+
+        Args:
+            owner: Repository owner.
+            repo: Repository name.
+            number: Issue/PR number.
+            data: Entity data to cache.
+        """
+        key = self._make_key(owner, repo, number)
+        self._cache[key] = data
+        logger.debug("Entity cached: %s", key)
+
+    def clear(self) -> None:
+        """Clear all cached data.
+
+        Call this at the start of each poll cycle to ensure fresh data.
+        """
+        size = len(self._cache)
+        if size > 0:
+            logger.debug(
+                "Clearing entity cache: %d entries, %d hits, %d misses",
+                size,
+                self._hits,
+                self._misses,
+            )
+        self._cache.clear()
+        self._hits = 0
+        self._misses = 0
+        self._created_at = datetime.now(UTC)
+
+    @staticmethod
+    def _make_key(owner: str, repo: str, number: int) -> str:
+        """Create cache key from entity identifiers."""
+        return f"{owner}/{repo}#{number}"
+
+    @property
+    def size(self) -> int:
+        """Get number of cached entities."""
+        return len(self._cache)
+
+    @property
+    def stats(self) -> dict[str, Any]:
+        """Get cache statistics."""
+        return {
+            "size": self.size,
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate": (
+                self._hits / (self._hits + self._misses)
+                if (self._hits + self._misses) > 0
+                else 0.0
+            ),
+            "created_at": self._created_at.isoformat(),
+        }
+
+
 class GitHubClient:
     """Async GitHub API client with rate limiting and pagination.
 
@@ -200,6 +302,7 @@ class GitHubClient:
         self._client: httpx.AsyncClient | None = None
         self._rate_limit: RateLimitInfo | None = None
         self._secondary_rate_limit_retries = 0
+        self._entity_cache = EntityCache()  # T075: Entity cache
 
     @property
     def headers(self) -> dict[str, str]:
@@ -785,42 +888,101 @@ class GitHubClient:
         owner: str,
         repo: str,
         issue_number: int,
+        *,
+        use_cache: bool = True,
     ) -> dict[str, Any]:
         """Get issue or pull request details.
+
+        Uses the entity cache by default to avoid repeated API calls
+        for the same entity within a poll cycle.
 
         Args:
             owner: Repository owner.
             repo: Repository name.
             issue_number: Issue or PR number.
+            use_cache: Whether to use/update the entity cache (default True).
 
         Returns:
             Issue/PR data.
         """
+        # Check cache first
+        if use_cache:
+            cached = self._entity_cache.get(owner, repo, issue_number)
+            if cached is not None:
+                return cached
+
+        # Fetch from API
         result = await self.get(f"/repos/{owner}/{repo}/issues/{issue_number}")
-        if isinstance(result, dict):
-            return result
-        return {}
+        data = result if isinstance(result, dict) else {}
+
+        # Cache the result
+        if use_cache and data:
+            self._entity_cache.put(owner, repo, issue_number, data)
+
+        return data
 
     async def get_pull_request(
         self,
         owner: str,
         repo: str,
         pr_number: int,
+        *,
+        use_cache: bool = True,
     ) -> dict[str, Any]:
         """Get pull request details.
+
+        Uses the entity cache by default to avoid repeated API calls
+        for the same entity within a poll cycle.
 
         Args:
             owner: Repository owner.
             repo: Repository name.
             pr_number: PR number.
+            use_cache: Whether to use/update the entity cache (default True).
 
         Returns:
             Pull request data.
         """
+        # Check cache first (use same key as issue since PRs are also issues)
+        if use_cache:
+            cached = self._entity_cache.get(owner, repo, pr_number)
+            if cached is not None:
+                return cached
+
+        # Fetch from API
         result = await self.get(f"/repos/{owner}/{repo}/pulls/{pr_number}")
-        if isinstance(result, dict):
-            return result
-        return {}
+        data = result if isinstance(result, dict) else {}
+
+        # Cache the result
+        if use_cache and data:
+            self._entity_cache.put(owner, repo, pr_number, data)
+
+        return data
+
+    def clear_entity_cache(self) -> None:
+        """Clear the entity cache.
+
+        Call this at the start of each poll cycle to ensure fresh data.
+        """
+        self._entity_cache.clear()
+
+    @property
+    def entity_cache(self) -> EntityCache:
+        """Get the entity cache instance.
+
+        Returns:
+            The EntityCache for PR/issue data.
+        """
+        return self._entity_cache
+
+    @property
+    def entity_cache_stats(self) -> dict[str, Any]:
+        """Get entity cache statistics.
+
+        Returns:
+            Dict with cache size, hits, misses, and hit rate.
+        """
+        return self._entity_cache.stats
 
     def __repr__(self) -> str:
         """Get string representation."""

@@ -19,6 +19,14 @@
         "/^source \\.venv/bin/activate && python -m concierge run --help$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python -m pytest tests/ -v --tb=short 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m ruff check src/concierge/ 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

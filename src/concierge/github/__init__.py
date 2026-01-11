@@ -6,6 +6,7 @@ from concierge.github.auth import (
 )
 from concierge.github.client import (
     DEFAULT_LOOKBACK_WINDOW,
+    EntityCache,
     GitHubClient,
     RateLimitError,
     TransientError,
@@ -18,8 +19,9 @@ from concierge.github.events import (
 )
 
 __all__ = [
-    "AuthenticationError",
     "DEFAULT_LOOKBACK_WINDOW",
+    "AuthenticationError",
+    "EntityCache",
     "Event",
     "EventSource",
     "EventType",

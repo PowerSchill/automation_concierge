@@ -190,19 +190,19 @@
 
 ### Time-Based Matchers
 
-- [ ] T071 [US4] Implement TimeSinceCondition matcher in src/concierge/rules/matchers.py (parse "48h", "7d" thresholds)
-- [ ] T072 [US4] Implement NoActivityCondition matcher in src/concierge/rules/matchers.py (check for review/comment/commit since)
-- [ ] T073 [US4] Implement injectable TimeProvider for testability in src/concierge/rules/matchers.py
+- [x] T071 [US4] Implement TimeSinceCondition matcher in src/concierge/rules/matchers.py (parse "48h", "7d" thresholds)
+- [x] T072 [US4] Implement NoActivityCondition matcher in src/concierge/rules/matchers.py (check for review/comment/commit since)
+- [x] T073 [US4] Implement injectable TimeProvider for testability in src/concierge/rules/matchers.py
 
 ### Entity Fetching
 
-- [ ] T074 [US4] Implement issue/PR detail fetching (GET /repos/{owner}/{repo}/issues/{number}) in src/concierge/github/client.py
-- [ ] T075 [US4] Implement entity cache (avoid re-fetching within poll cycle) in src/concierge/github/client.py
+- [x] T074 [US4] Implement issue/PR detail fetching (GET /repos/{owner}/{repo}/issues/{number}) in src/concierge/github/client.py
+- [x] T075 [US4] Implement entity cache (avoid re-fetching within poll cycle) in src/concierge/github/client.py
 
 ### Time-Based Dedupe
 
-- [ ] T076 [US4] Implement time-based rule dedupe key (entity_id, rule_id, threshold) in src/concierge/state/store.py
-- [ ] T077 [US4] Implement threshold crossing detection (only fire once per threshold) in src/concierge/rules/engine.py
+- [x] T076 [US4] Implement time-based rule dedupe key (entity_id, rule_id, threshold) in src/concierge/state/store.py
+- [x] T077 [US4] Implement threshold crossing detection (only fire once per threshold) in src/concierge/rules/engine.py
 
 **Checkpoint**: User Story 4 complete - time-based rules functional
 
