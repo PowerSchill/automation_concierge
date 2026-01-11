@@ -236,25 +236,25 @@
 
 ### Slack Action
 
-- [ ] T082 [P] [US6] Implement Slack webhook action in src/concierge/actions/slack.py
-- [ ] T083 [US6] Implement Slack retry semantics (3 attempts, 1s→2s→4s backoff) in src/concierge/actions/slack.py
-- [ ] T084 [US6] Implement Slack rate limiting (max 10 messages/minute) in src/concierge/actions/slack.py
+- [x] T082 [P] [US6] Implement Slack webhook action in src/concierge/actions/slack.py
+- [x] T083 [US6] Implement Slack retry semantics (3 attempts, 1s→2s→4s backoff) in src/concierge/actions/slack.py
+- [x] T084 [US6] Implement Slack rate limiting (max 10 messages/minute) in src/concierge/actions/slack.py
 
 ### GitHub Comment Action
 
-- [ ] T085 [P] [US6] Implement GitHub comment action (POST /repos/{owner}/{repo}/issues/{number}/comments) in src/concierge/actions/github_comment.py
-- [ ] T086 [US6] Implement opt_in validation (require opt_in: true in action config) in src/concierge/actions/github_comment.py
-- [ ] T087 [US6] Implement GitHub comment retry semantics (2 attempts, 2s→5s backoff) in src/concierge/actions/github_comment.py
-- [ ] T088 [US6] Implement GitHub comment rate limiting (max 1 per issue per hour) in src/concierge/actions/github_comment.py
+- [x] T085 [P] [US6] Implement GitHub comment action (POST /repos/{owner}/{repo}/issues/{number}/comments) in src/concierge/actions/github_comment.py
+- [x] T086 [US6] Implement opt_in validation (require opt_in: true in action config) in src/concierge/actions/github_comment.py
+- [x] T087 [US6] Implement GitHub comment retry semantics (2 attempts, 2s→5s backoff) in src/concierge/actions/github_comment.py
+- [x] T088 [US6] Implement GitHub comment rate limiting (max 1 per issue per hour) in src/concierge/actions/github_comment.py
 
 ### Message Templating
 
-- [ ] T089 [US6] Implement message template expansion ({{ event.field }} placeholders) in src/concierge/actions/executor.py
+- [x] T089 [US6] Implement message template expansion ({{ event.field }} placeholders) in src/concierge/actions/executor.py
 
 ### Action Executor Enhancement
 
-- [ ] T090 [US6] Extend action executor to dispatch to slack and github_comment handlers in src/concierge/actions/executor.py
-- [ ] T091 [US6] Implement action failure isolation (one failure doesn't block others) in src/concierge/actions/executor.py
+- [x] T090 [US6] Extend action executor to dispatch to slack and github_comment handlers in src/concierge/actions/executor.py
+- [x] T091 [US6] Implement action failure isolation (one failure doesn't block others) in src/concierge/actions/executor.py
 
 **Checkpoint**: User Story 6 complete - all action types functional
 
