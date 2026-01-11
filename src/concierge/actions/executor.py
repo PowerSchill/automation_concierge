@@ -1,8 +1,16 @@
-"""Action executor for dispatching and running actions."""
+"""Action executor for dispatching and running actions.
+
+This module provides the ActionExecutor class which:
+- Dispatches actions to appropriate handlers (T090)
+- Supports console, Slack, and GitHub comment actions
+- Implements message template expansion (T089)
+- Provides action failure isolation (T091)
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -10,6 +18,8 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from concierge.actions.console import ConsoleAction
+from concierge.actions.github_comment import GitHubCommentAction
+from concierge.actions.slack import SlackAction
 from concierge.config.schema import Action, ActionType
 
 if TYPE_CHECKING:
@@ -56,22 +66,44 @@ class ActionResult(BaseModel):
 
 
 class ActionExecutor:
-    """Executor for dispatching actions to appropriate handlers."""
+    """Executor for dispatching actions to appropriate handlers.
+
+    Features:
+    - Dispatches to console, Slack, GitHub comment handlers (T090)
+    - Supports message template expansion (T089)
+    - Provides action failure isolation (T091)
+    """
 
     def __init__(
         self,
         *,
         dry_run: bool = False,
         console_colorize: bool = True,
+        slack_webhook_url: str | None = None,
+        github_token: str | None = None,
     ) -> None:
         """Initialize action executor.
 
         Args:
             dry_run: If True, log actions without executing.
             console_colorize: Whether to colorize console output.
+            slack_webhook_url: Slack webhook URL for Slack actions.
+            github_token: GitHub token for comment actions.
         """
         self._dry_run = dry_run
         self._console = ConsoleAction(colorize=console_colorize)
+
+        # Initialize Slack action if configured
+        self._slack: SlackAction | None = None
+        if slack_webhook_url:
+            self._slack = SlackAction(slack_webhook_url)
+
+        # Initialize GitHub comment action if configured
+        self._github_comment: GitHubCommentAction | None = None
+        if github_token:
+            self._github_comment = GitHubCommentAction(github_token)
+        elif os.environ.get("GITHUB_TOKEN"):
+            self._github_comment = GitHubCommentAction(os.environ["GITHUB_TOKEN"])
 
     def execute(
         self,
@@ -166,6 +198,45 @@ class ActionExecutor:
 
         return results
 
+    def execute_all_isolated(
+        self,
+        matches: list[Match],
+    ) -> dict[str, list[ActionResult]]:
+        """Execute actions for multiple matches with failure isolation (T091).
+
+        Each match is processed independently. If one action fails,
+        it doesn't prevent other actions from being executed.
+
+        Args:
+            matches: List of matches to process.
+
+        Returns:
+            Dict mapping match event IDs to their action results.
+        """
+        results: dict[str, list[ActionResult]] = {}
+
+        for match in matches:
+            event_id = match.event.id
+            try:
+                match_results = self.execute_all(match)
+                results[event_id] = match_results
+            except Exception as e:
+                # T091: Isolate failures - log and continue
+                logger.exception(
+                    "Unhandled error executing actions for event '%s': %s",
+                    event_id,
+                    e,
+                )
+                results[event_id] = [
+                    ActionResult(
+                        action_type=match.rule.action.type,
+                        status=ActionStatus.FAILURE,
+                        message=f"Unhandled error: {e}",
+                    )
+                ]
+
+        return results
+
     def _execute_console(
         self,
         match: Match,
@@ -198,12 +269,10 @@ class ActionExecutor:
 
     def _execute_slack(
         self,
-        match: Match,  # noqa: ARG002
-        action: Action,  # noqa: ARG002
+        match: Match,
+        action: Action,
     ) -> ActionResult:
         """Execute Slack webhook action.
-
-        Note: This is a stub for US1. Full implementation in US6.
 
         Args:
             match: Match that triggered the action.
@@ -212,21 +281,41 @@ class ActionExecutor:
         Returns:
             ActionResult.
         """
-        logger.warning("Slack action not yet implemented (coming in US6)")
+        if self._slack is None:
+            logger.warning("Slack action requested but no webhook URL configured")
+            return ActionResult(
+                action_type=ActionType.SLACK,
+                status=ActionStatus.SKIPPED,
+                message="Slack webhook URL not configured",
+            )
+
+        # Expand message template (T089)
+        message = expand_message_template(action.message, match)
+
+        # Execute Slack action
+        result = self._slack.execute(match, message)
+
+        if result.success:
+            return ActionResult(
+                action_type=ActionType.SLACK,
+                status=ActionStatus.SUCCESS,
+                message="Slack notification sent",
+                details={"attempts": result.attempts},
+            )
+
         return ActionResult(
             action_type=ActionType.SLACK,
-            status=ActionStatus.SKIPPED,
-            message="Slack action not yet implemented",
+            status=ActionStatus.FAILURE,
+            message=result.message,
+            details={"attempts": result.attempts, "status_code": result.status_code},
         )
 
     def _execute_github_comment(
         self,
-        match: Match,  # noqa: ARG002
-        action: Action,  # noqa: ARG002
+        match: Match,
+        action: Action,
     ) -> ActionResult:
         """Execute GitHub comment action.
-
-        Note: This is a stub for US1. Full implementation in US6.
 
         Args:
             match: Match that triggered the action.
@@ -235,11 +324,41 @@ class ActionExecutor:
         Returns:
             ActionResult.
         """
-        logger.warning("GitHub comment action not yet implemented (coming in US6)")
+        if self._github_comment is None:
+            logger.warning("GitHub comment action requested but no token configured")
+            return ActionResult(
+                action_type=ActionType.GITHUB_COMMENT,
+                status=ActionStatus.SKIPPED,
+                message="GitHub token not configured",
+            )
+
+        # Expand message template (T089)
+        message = expand_message_template(action.message, match)
+
+        # Execute GitHub comment action with opt_in validation (T086)
+        result = self._github_comment.execute(
+            match,
+            message,
+            opt_in=action.opt_in,
+        )
+
+        if result.success:
+            return ActionResult(
+                action_type=ActionType.GITHUB_COMMENT,
+                status=ActionStatus.SUCCESS,
+                message="GitHub comment posted",
+                details={
+                    "comment_id": result.comment_id,
+                    "comment_url": result.comment_url,
+                    "attempts": result.attempts,
+                },
+            )
+
         return ActionResult(
             action_type=ActionType.GITHUB_COMMENT,
-            status=ActionStatus.SKIPPED,
-            message="GitHub comment action not yet implemented",
+            status=ActionStatus.FAILURE,
+            message=result.message,
+            details={"attempts": result.attempts, "status_code": result.status_code},
         )
 
 
@@ -247,6 +366,8 @@ def execute_actions(
     match: Match,
     *,
     dry_run: bool = False,
+    slack_webhook_url: str | None = None,
+    github_token: str | None = None,
 ) -> list[ActionResult]:
     """Execute all actions for a match.
 
@@ -255,12 +376,47 @@ def execute_actions(
     Args:
         match: Match that triggered the actions.
         dry_run: If True, log actions without executing.
+        slack_webhook_url: Slack webhook URL for Slack actions.
+        github_token: GitHub token for comment actions.
 
     Returns:
         List of ActionResults.
     """
-    executor = ActionExecutor(dry_run=dry_run)
+    executor = ActionExecutor(
+        dry_run=dry_run,
+        slack_webhook_url=slack_webhook_url,
+        github_token=github_token,
+    )
     return executor.execute_all(match)
+
+
+def execute_actions_isolated(
+    matches: list[Match],
+    *,
+    dry_run: bool = False,
+    slack_webhook_url: str | None = None,
+    github_token: str | None = None,
+) -> dict[str, list[ActionResult]]:
+    """Execute actions for multiple matches with failure isolation.
+
+    Convenience function that creates an executor and processes
+    all matches, isolating failures (T091).
+
+    Args:
+        matches: List of matches to process.
+        dry_run: If True, log actions without executing.
+        slack_webhook_url: Slack webhook URL for Slack actions.
+        github_token: GitHub token for comment actions.
+
+    Returns:
+        Dict mapping event IDs to action results.
+    """
+    executor = ActionExecutor(
+        dry_run=dry_run,
+        slack_webhook_url=slack_webhook_url,
+        github_token=github_token,
+    )
+    return executor.execute_all_isolated(matches)
 
 
 def expand_message_template(

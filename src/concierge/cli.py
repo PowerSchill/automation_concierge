@@ -13,6 +13,13 @@ Exit codes:
 - 2: Authentication error
 - 3: Partial failure
 - 4: Fatal error
+
+Phase 5 (US3) Features:
+- Checkpoint load on startup for resume
+- Lookback window for first run (default 3600s from config)
+- Poll interval with jitter (0-10% random)
+- Poll interval CLI override (--poll-interval, 30-300 range)
+- Checkpoint atomic save after each poll cycle
 """
 
 from __future__ import annotations
@@ -40,15 +47,26 @@ from concierge.config.loader import (
 from concierge.github import GitHubClient, normalize_notification, validate_token
 from concierge.github.auth import AuthenticationError
 from concierge.logging import configure_logging, get_logger
+from concierge.logging.audit import (
+    log_action_taken,
+    log_decision,
+    log_event_received,
+    log_poll_cycle,
+    log_rule_evaluated,
+)
 from concierge.paths import get_default_state_dir
 from concierge.rules import RulesEngine
 from concierge.state import StateStore
+from concierge.state.checkpoint import save_checkpoint_atomic
 from concierge.state.store import Disposition, ResultStatus
 
 if TYPE_CHECKING:
     import structlog
 
     from concierge.config.schema import Config
+
+# Poll interval jitter range (0-10% of poll_interval)
+POLL_JITTER_FRACTION = 0.1
 
 
 # Exit codes per plan.md specification
@@ -302,7 +320,7 @@ def run_once(
     _run_once_impl(cfg, state_dir, dry_run, verbose, log)
 
 
-def _run_once_impl(
+def _run_once_impl(  # noqa: PLR0915
     cfg: Config,
     state_dir: Path | None,
     dry_run: bool,
@@ -310,6 +328,11 @@ def _run_once_impl(
     log: structlog.stdlib.BoundLogger,
 ) -> None:
     """Implementation of single poll cycle.
+
+    Implements US3 features:
+    - Checkpoint load on startup for resume
+    - Lookback window for first run (from config, default 3600s)
+    - Checkpoint atomic save after poll cycle
 
     Args:
         cfg: Configuration object
@@ -341,13 +364,18 @@ def _run_once_impl(
     log.info("Initialized state store", path=str(db_path))
 
     try:
-        # Load checkpoint
+        # T066: Load checkpoint on startup
         checkpoint = store.get_checkpoint()
-        log.info(
-            "Loaded checkpoint",
-            last_poll=checkpoint.last_poll_timestamp,
-            last_event=checkpoint.last_event_timestamp,
-        )
+        is_first_run = checkpoint.is_empty()
+
+        if is_first_run:
+            log.info("First run detected, no previous checkpoint found")
+        else:
+            log.info(
+                "Loaded checkpoint",
+                last_poll=checkpoint.last_poll_timestamp,
+                last_event=checkpoint.last_event_timestamp,
+            )
 
         # Validate GitHub token
         try:
@@ -359,12 +387,18 @@ def _run_once_impl(
             )
             raise typer.Exit(ExitCode.AUTH_ERROR) from e
 
-        # Calculate 'since' for notifications
+        # T067: Calculate 'since' for notifications with lookback_window for first run
         since = checkpoint.last_event_timestamp
         if since is None:
-            # First run: look back by lookback_window (default 1 hour)
-            lookback = getattr(cfg.github, "lookback_window", 3600)
+            # First run: look back by lookback_window from config (default 3600s = 1 hour)
+            lookback = cfg.github.lookback_window
             since = datetime.now(UTC) - timedelta(seconds=lookback)
+            log.info(
+                "First run: looking back %d seconds",
+                lookback,
+                lookback_window=lookback,
+                since=since,
+            )
 
         # Fetch and process notifications
         events_processed = 0
@@ -393,10 +427,10 @@ def _run_once_impl(
             )
             raise typer.Exit(ExitCode.FATAL_ERROR) from e
 
-        # Update checkpoint
+        # T068: Update checkpoint atomically after successful poll cycle
         checkpoint.last_poll_timestamp = datetime.now(UTC)
-        store.save_checkpoint(checkpoint)
-        log.info("Updated checkpoint", last_poll=checkpoint.last_poll_timestamp)
+        save_checkpoint_atomic(store, checkpoint)
+        log.info("Saved checkpoint", last_poll=checkpoint.last_poll_timestamp)
 
         # Report results
         typer.echo()
@@ -429,7 +463,7 @@ async def _validate_auth(log: structlog.stdlib.BoundLogger) -> None:
     log.info("GitHub authentication successful", user=result["user"])
 
 
-async def _poll_cycle(  # noqa: PLR0912
+async def _poll_cycle(  # noqa: PLR0912, PLR0915
     cfg: Config,
     store: StateStore,
     since: datetime,
@@ -448,6 +482,7 @@ async def _poll_cycle(  # noqa: PLR0912
     Returns:
         Dictionary with counts: events_processed, actions_executed, errors
     """
+    cycle_start = time.perf_counter()
     events_processed = 0
     actions_executed = 0
     errors = 0
@@ -470,6 +505,13 @@ async def _poll_cycle(  # noqa: PLR0912
             # Normalize to Event
             event = normalize_notification(notification)
             log.debug("Received event", event_id=event.id, event_type=event.event_type)
+
+            # Log event received with structured logging
+            log_event_received(
+                event_id=event.id,
+                event_type=event.event_type.value,
+                event_source=event.entity_id,
+            )
 
             # Check if already processed
             if store.is_processed(event.id):
@@ -499,6 +541,15 @@ async def _poll_cycle(  # noqa: PLR0912
                     "match_reason": match.match_reason,
                 })
 
+                # Log rule evaluation with structured logging
+                log_rule_evaluated(
+                    event_id=event.id,
+                    rule_id=rule.id,
+                    rule_name=rule.name,
+                    matched=True,
+                    match_reason=match.match_reason,
+                )
+
                 # Check if action already executed for this event+rule
                 if store.has_action_executed(event.id, rule.id):
                     log.debug(
@@ -512,6 +563,11 @@ async def _poll_cycle(  # noqa: PLR0912
                 action_results = executor.execute_all(match)
 
                 for action_result in action_results:
+                    # Get message preview for logging (first 100 chars)
+                    message_preview = None
+                    if action_result.message:
+                        message_preview = action_result.message[:100]
+
                     if action_result.status == ActionStatus.SUCCESS:
                         actions_executed += 1
                         store.record_action(
@@ -525,6 +581,15 @@ async def _poll_cycle(  # noqa: PLR0912
                             "result": "success",
                             "target": event.entity_id,
                         })
+                        # Log action with structured logging
+                        log_action_taken(
+                            event_id=event.id,
+                            rule_id=rule.id,
+                            action_type=action_result.action_type.value,
+                            target=event.entity_id,
+                            result="success",
+                            message_preview=message_preview,
+                        )
                     elif action_result.status == ActionStatus.FAILURE:
                         errors += 1
                         store.record_action(
@@ -539,12 +604,30 @@ async def _poll_cycle(  # noqa: PLR0912
                             "result": "failed",
                             "message": action_result.message,
                         })
+                        # Log action failure with structured logging
+                        log_action_taken(
+                            event_id=event.id,
+                            rule_id=rule.id,
+                            action_type=action_result.action_type.value,
+                            target=event.entity_id,
+                            result="failed",
+                            error=action_result.message,
+                        )
                     elif action_result.status == ActionStatus.DRY_RUN:
                         actions_taken.append({
                             "action_type": action_result.action_type.value,
                             "result": "dry_run",
                             "target": event.entity_id,
                         })
+                        # Log dry-run action with structured logging
+                        log_action_taken(
+                            event_id=event.id,
+                            rule_id=rule.id,
+                            action_type=action_result.action_type.value,
+                            target=event.entity_id,
+                            result="dry_run",
+                            message_preview=message_preview,
+                        )
 
             # Determine disposition
             if result.has_matches:
@@ -571,11 +654,31 @@ async def _poll_cycle(  # noqa: PLR0912
                 actions_taken=actions_taken,
             )
 
+            # Log full decision trail with structured logging
+            log_decision(
+                event_id=event.id,
+                event_type=event.event_type.value,
+                event_source=event.entity_id,
+                rules_evaluated=rules_evaluated,
+                actions_taken=actions_taken,
+                disposition=disposition.value,
+                message=f"Processed {event.event_type.value} event from {event.repo_full_name}",
+            )
+
     log.info(
         "Poll cycle complete",
         events_processed=events_processed,
         actions_executed=actions_executed,
         errors=errors,
+    )
+
+    # Log poll cycle with structured logging (includes duration)
+    cycle_duration_ms = (time.perf_counter() - cycle_start) * 1000
+    log_poll_cycle(
+        events_fetched=events_processed,  # All fetched events were processed
+        events_processed=events_processed,
+        actions_taken=actions_executed,
+        duration_ms=cycle_duration_ms,
     )
 
     return {
@@ -597,7 +700,7 @@ def _signal_handler(signum: int, _frame: object) -> None:
     typer.echo(f"\n⚡ Received {signal_name}, shutting down gracefully...")
 
 
-def _run_daemon_impl(  # noqa: PLR0915
+def _run_daemon_impl(  # noqa: PLR0912, PLR0915
     cfg: Config,
     state_dir: Path | None,
     dry_run: bool,
@@ -606,11 +709,18 @@ def _run_daemon_impl(  # noqa: PLR0915
 ) -> None:
     """Implementation of continuous polling daemon.
 
+    Implements US3 features:
+    - Checkpoint load on startup for resume
+    - Lookback window for first run (from config)
+    - Poll interval with jitter (0-10% random)
+    - Checkpoint atomic save after each poll cycle
+    - Graceful shutdown on SIGTERM/SIGINT
+
     Args:
         cfg: Configuration object
         state_dir: State directory
         dry_run: Whether to skip action execution
-        poll_interval: Seconds between poll cycles
+        poll_interval: Seconds between poll cycles (T070: can be overridden via CLI)
         log: Logger instance
     """
     global _shutdown_requested  # noqa: PLW0603
@@ -651,6 +761,19 @@ def _run_daemon_impl(  # noqa: PLR0915
     store = StateStore(db_path)
     log.info("Initialized state store", path=str(db_path))
 
+    # T066: Load checkpoint on startup
+    checkpoint = store.get_checkpoint()
+    is_first_run = checkpoint.is_empty()
+
+    if is_first_run:
+        log.info("First run detected, no previous checkpoint found")
+    else:
+        log.info(
+            "Resuming from checkpoint",
+            last_poll=checkpoint.last_poll_timestamp,
+            last_event=checkpoint.last_event_timestamp,
+        )
+
     # Validate GitHub token once at startup
     try:
         asyncio.run(_validate_auth(log))
@@ -672,15 +795,21 @@ def _run_daemon_impl(  # noqa: PLR0915
             cycles += 1
             log.info("Starting poll cycle", cycle=cycles)
 
-            # Load checkpoint
+            # Reload checkpoint for each cycle (in case of external changes)
             checkpoint = store.get_checkpoint()
 
-            # Calculate 'since' for notifications
+            # T067: Calculate 'since' with lookback_window for first run
             since = checkpoint.last_event_timestamp
             if since is None:
-                # First run: look back by lookback_window (default 1 hour)
-                lookback = getattr(cfg.github, "lookback_window", 3600)
+                # First run: look back by lookback_window from config
+                lookback = cfg.github.lookback_window
                 since = datetime.now(UTC) - timedelta(seconds=lookback)
+                log.info(
+                    "First run: looking back %d seconds",
+                    lookback,
+                    lookback_window=lookback,
+                    since=since,
+                )
 
             try:
                 results = asyncio.run(
@@ -696,9 +825,9 @@ def _run_daemon_impl(  # noqa: PLR0915
                 total_actions += results["actions_executed"]
                 total_errors += results["errors"]
 
-                # Update checkpoint
+                # T068: Atomic checkpoint save after each successful poll cycle
                 checkpoint.last_poll_timestamp = datetime.now(UTC)
-                store.save_checkpoint(checkpoint)
+                save_checkpoint_atomic(store, checkpoint)
 
             except Exception:
                 log.exception("Poll cycle failed", cycle=cycles)
@@ -707,10 +836,15 @@ def _run_daemon_impl(  # noqa: PLR0915
             if _shutdown_requested:
                 break
 
-            # Sleep with jitter (0-10% of poll_interval)
-            jitter = random.uniform(0, poll_interval * 0.1)
+            # T069: Sleep with jitter (0-10% of poll_interval)
+            jitter = random.uniform(0, poll_interval * POLL_JITTER_FRACTION)
             sleep_time = poll_interval + jitter
-            log.debug("Sleeping until next cycle", sleep_seconds=sleep_time)
+            log.debug(
+                "Sleeping until next cycle",
+                sleep_seconds=sleep_time,
+                base_interval=poll_interval,
+                jitter=jitter,
+            )
 
             # Sleep in small increments to check for shutdown signal
             sleep_end = time.time() + sleep_time

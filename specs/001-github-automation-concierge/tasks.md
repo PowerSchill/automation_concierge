@@ -132,19 +132,19 @@
 
 ### Audit Logging
 
-- [ ] T054 [US2] Implement AuditLogEntry model in src/concierge/state/store.py (per data-model.md: rules_evaluated, actions_taken, disposition)
-- [ ] T055 [US2] Implement audit log write on each event processing in src/concierge/state/store.py
-- [ ] T056 [US2] Implement log_decision() function with full decision trail in src/concierge/logging/audit.py
+- [x] T054 [US2] Implement AuditLogEntry model in src/concierge/state/store.py (per data-model.md: rules_evaluated, actions_taken, disposition)
+- [x] T055 [US2] Implement audit log write on each event processing in src/concierge/state/store.py
+- [x] T056 [US2] Implement log_decision() function with full decision trail in src/concierge/logging/audit.py
 
 ### Audit Query CLI
 
-- [ ] T057 [US2] Implement `concierge audit` command in src/concierge/cli.py (--since, --rule, --limit options)
-- [ ] T058 [US2] Implement `concierge status` command in src/concierge/cli.py (show last checkpoint, pending events count)
+- [x] T057 [US2] Implement `concierge audit` command in src/concierge/cli.py (--since, --rule, --limit options)
+- [x] T058 [US2] Implement `concierge status` command in src/concierge/cli.py (show last checkpoint, pending events count)
 
 ### Enhanced Logging
 
-- [ ] T059 [US2] Add structured log events: event_received, rule_evaluated, action_taken in src/concierge/logging/audit.py
-- [ ] T060 [US2] Implement match_reason string generation for each rule evaluation in src/concierge/rules/engine.py
+- [x] T059 [US2] Add structured log events: event_received, rule_evaluated, action_taken in src/concierge/logging/audit.py
+- [x] T060 [US2] Implement match_reason string generation for each rule evaluation in src/concierge/rules/engine.py
 
 **Checkpoint**: User Story 2 complete - user can explain any action via audit log or CLI
 
@@ -158,25 +158,25 @@
 
 ### Rate Limit Handling
 
-- [ ] T061 [US3] Implement proactive rate limit check (pause when remaining < 100) in src/concierge/github/client.py
-- [ ] T062 [US3] Implement rate limit pause with jitter (sleep until reset + 10s) in src/concierge/github/client.py
-- [ ] T063 [US3] Implement 403 rate limit response handling with retry in src/concierge/github/client.py
+- [x] T061 [US3] Implement proactive rate limit check (pause when remaining < 100) in src/concierge/github/client.py
+- [x] T062 [US3] Implement rate limit pause with jitter (sleep until reset + 10s) in src/concierge/github/client.py
+- [x] T063 [US3] Implement 403 rate limit response handling with retry in src/concierge/github/client.py
 
 ### Retry & Resilience
 
-- [ ] T064 [US3] Implement exponential backoff for transient failures (5xx, network errors) in src/concierge/github/client.py
-- [ ] T065 [US3] Implement secondary rate limit handling (abuse detection 403) in src/concierge/github/client.py
+- [x] T064 [US3] Implement exponential backoff for transient failures (5xx, network errors) in src/concierge/github/client.py
+- [x] T065 [US3] Implement secondary rate limit handling (abuse detection 403) in src/concierge/github/client.py
 
 ### Checkpoint Resume
 
-- [ ] T066 [US3] Implement checkpoint load on startup in src/concierge/cli.py
-- [ ] T067 [US3] Implement lookback_window for first run (default 3600s) in src/concierge/github/client.py
-- [ ] T068 [US3] Implement checkpoint atomic save after each successful poll cycle in src/concierge/state/checkpoint.py
+- [x] T066 [US3] Implement checkpoint load on startup in src/concierge/cli.py
+- [x] T067 [US3] Implement lookback_window for first run (default 3600s) in src/concierge/github/client.py
+- [x] T068 [US3] Implement checkpoint atomic save after each successful poll cycle in src/concierge/state/checkpoint.py
 
 ### Poll Loop Refinements
 
-- [ ] T069 [US3] Implement poll interval with jitter (0-10% random) in src/concierge/cli.py
-- [ ] T070 [US3] Implement poll_interval CLI override (--poll-interval, 30-300 range validation) in src/concierge/cli.py
+- [x] T069 [US3] Implement poll interval with jitter (0-10% random) in src/concierge/cli.py
+- [x] T070 [US3] Implement poll_interval CLI override (--poll-interval, 30-300 range validation) in src/concierge/cli.py
 
 **Checkpoint**: User Story 3 complete - system operates reliably for extended periods
 
@@ -190,19 +190,19 @@
 
 ### Time-Based Matchers
 
-- [ ] T071 [US4] Implement TimeSinceCondition matcher in src/concierge/rules/matchers.py (parse "48h", "7d" thresholds)
-- [ ] T072 [US4] Implement NoActivityCondition matcher in src/concierge/rules/matchers.py (check for review/comment/commit since)
-- [ ] T073 [US4] Implement injectable TimeProvider for testability in src/concierge/rules/matchers.py
+- [x] T071 [US4] Implement TimeSinceCondition matcher in src/concierge/rules/matchers.py (parse "48h", "7d" thresholds)
+- [x] T072 [US4] Implement NoActivityCondition matcher in src/concierge/rules/matchers.py (check for review/comment/commit since)
+- [x] T073 [US4] Implement injectable TimeProvider for testability in src/concierge/rules/matchers.py
 
 ### Entity Fetching
 
-- [ ] T074 [US4] Implement issue/PR detail fetching (GET /repos/{owner}/{repo}/issues/{number}) in src/concierge/github/client.py
-- [ ] T075 [US4] Implement entity cache (avoid re-fetching within poll cycle) in src/concierge/github/client.py
+- [x] T074 [US4] Implement issue/PR detail fetching (GET /repos/{owner}/{repo}/issues/{number}) in src/concierge/github/client.py
+- [x] T075 [US4] Implement entity cache (avoid re-fetching within poll cycle) in src/concierge/github/client.py
 
 ### Time-Based Dedupe
 
-- [ ] T076 [US4] Implement time-based rule dedupe key (entity_id, rule_id, threshold) in src/concierge/state/store.py
-- [ ] T077 [US4] Implement threshold crossing detection (only fire once per threshold) in src/concierge/rules/engine.py
+- [x] T076 [US4] Implement time-based rule dedupe key (entity_id, rule_id, threshold) in src/concierge/state/store.py
+- [x] T077 [US4] Implement threshold crossing detection (only fire once per threshold) in src/concierge/rules/engine.py
 
 **Checkpoint**: User Story 4 complete - time-based rules functional
 
@@ -216,13 +216,13 @@
 
 ### Label Matchers
 
-- [ ] T078 [US5] Implement LabelCondition matcher (label_present, label_added, label_removed) in src/concierge/rules/matchers.py
-- [ ] T079 [US5] Implement label change detection from GitHub event payload in src/concierge/github/events.py
+- [x] T078 [US5] Implement LabelCondition matcher (label_present, label_added, label_removed) in src/concierge/rules/matchers.py
+- [x] T079 [US5] Implement label change detection from GitHub event payload in src/concierge/github/events.py
 
 ### Label Event Normalization
 
-- [ ] T080 [US5] Extend event normalization for label_change event type in src/concierge/github/events.py
-- [ ] T081 [US5] Add label list to Event model (current labels, added labels, removed labels) in src/concierge/github/events.py
+- [x] T080 [US5] Extend event normalization for label_change event type in src/concierge/github/events.py
+- [x] T081 [US5] Add label list to Event model (current labels, added labels, removed labels) in src/concierge/github/events.py
 
 **Checkpoint**: User Story 5 complete - label-based rules functional
 
@@ -236,25 +236,25 @@
 
 ### Slack Action
 
-- [ ] T082 [P] [US6] Implement Slack webhook action in src/concierge/actions/slack.py
-- [ ] T083 [US6] Implement Slack retry semantics (3 attempts, 1s→2s→4s backoff) in src/concierge/actions/slack.py
-- [ ] T084 [US6] Implement Slack rate limiting (max 10 messages/minute) in src/concierge/actions/slack.py
+- [x] T082 [P] [US6] Implement Slack webhook action in src/concierge/actions/slack.py
+- [x] T083 [US6] Implement Slack retry semantics (3 attempts, 1s→2s→4s backoff) in src/concierge/actions/slack.py
+- [x] T084 [US6] Implement Slack rate limiting (max 10 messages/minute) in src/concierge/actions/slack.py
 
 ### GitHub Comment Action
 
-- [ ] T085 [P] [US6] Implement GitHub comment action (POST /repos/{owner}/{repo}/issues/{number}/comments) in src/concierge/actions/github_comment.py
-- [ ] T086 [US6] Implement opt_in validation (require opt_in: true in action config) in src/concierge/actions/github_comment.py
-- [ ] T087 [US6] Implement GitHub comment retry semantics (2 attempts, 2s→5s backoff) in src/concierge/actions/github_comment.py
-- [ ] T088 [US6] Implement GitHub comment rate limiting (max 1 per issue per hour) in src/concierge/actions/github_comment.py
+- [x] T085 [P] [US6] Implement GitHub comment action (POST /repos/{owner}/{repo}/issues/{number}/comments) in src/concierge/actions/github_comment.py
+- [x] T086 [US6] Implement opt_in validation (require opt_in: true in action config) in src/concierge/actions/github_comment.py
+- [x] T087 [US6] Implement GitHub comment retry semantics (2 attempts, 2s→5s backoff) in src/concierge/actions/github_comment.py
+- [x] T088 [US6] Implement GitHub comment rate limiting (max 1 per issue per hour) in src/concierge/actions/github_comment.py
 
 ### Message Templating
 
-- [ ] T089 [US6] Implement message template expansion ({{ event.field }} placeholders) in src/concierge/actions/executor.py
+- [x] T089 [US6] Implement message template expansion ({{ event.field }} placeholders) in src/concierge/actions/executor.py
 
 ### Action Executor Enhancement
 
-- [ ] T090 [US6] Extend action executor to dispatch to slack and github_comment handlers in src/concierge/actions/executor.py
-- [ ] T091 [US6] Implement action failure isolation (one failure doesn't block others) in src/concierge/actions/executor.py
+- [x] T090 [US6] Extend action executor to dispatch to slack and github_comment handlers in src/concierge/actions/executor.py
+- [x] T091 [US6] Implement action failure isolation (one failure doesn't block others) in src/concierge/actions/executor.py
 
 **Checkpoint**: User Story 6 complete - all action types functional
 
@@ -264,14 +264,14 @@
 
 **Purpose**: Documentation, cleanup, and final validation
 
-- [ ] T092 [P] Create sample config file at examples/concierge.yaml
-- [ ] T093 [P] Create README.md with installation, configuration, and usage instructions
-- [ ] T094 Update CHANGELOG.md with v1.0.0 release notes
-- [ ] T095 [P] Add docstrings to all public functions per constitution
-- [ ] T096 Run ruff and pyright, fix all errors
-- [ ] T097 Run pytest with coverage, ensure 80%+ on business logic (rules, actions, state)
-- [ ] T098 Validate quickstart.md scenarios work end-to-end
-- [ ] T099 Security review: verify no plaintext secrets in logs, file permissions, webhook URL redaction
+- [x] T092 [P] Create sample config file at examples/concierge.yaml
+- [x] T093 [P] Create README.md with installation, configuration, and usage instructions
+- [x] T094 Update CHANGELOG.md with v1.0.0 release notes
+- [x] T095 [P] Add docstrings to all public functions per constitution
+- [x] T096 Run ruff and pyright, fix all errors
+- [x] T097 Run pytest with coverage, ensure 80%+ on business logic (rules, actions, state)
+- [x] T098 Validate quickstart.md scenarios work end-to-end
+- [x] T099 Security review: verify no plaintext secrets in logs, file permissions, webhook URL redaction
 
 ---
 

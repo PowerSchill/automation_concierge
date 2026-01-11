@@ -11,6 +11,26 @@
         ".specify/scripts/powershell/": true,
         "ruff": true,
         "pyright": true,
-        ".venv/bin/ruff": true
+        ".venv/bin/ruff": true,
+        "/^source \\.venv/bin/activate && python -m concierge --help$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m concierge run --help$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m pytest tests/ -v --tb=short 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m ruff check src/concierge/ 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m pyright src/concierge/actions/ 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }

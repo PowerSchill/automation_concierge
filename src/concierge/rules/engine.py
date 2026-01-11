@@ -1,43 +1,76 @@
-"""Rule evaluation engine."""
+"""Rule evaluation engine.
+
+This module provides the RulesEngine class for evaluating events
+against configured rules. It handles:
+- Event type matching
+- Condition evaluation via matchers
+- Time-based threshold crossing detection (T077)
+- TimeProvider integration for testable time-based rules
+"""
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime  # noqa: TC003 - used in property return type
 from typing import TYPE_CHECKING
 
+from concierge.config.schema import NoActivityCondition, TimeSinceCondition
 from concierge.github.events import Event, EventType
-from concierge.rules.matchers import get_matcher, match_event_type
+from concierge.rules.matchers import (
+    TimeProvider,
+    get_matcher,
+    get_time_provider,
+    match_event_type,
+)
 from concierge.rules.schema import Match, MatchResult
 
 if TYPE_CHECKING:
     from concierge.config.schema import Rule
+    from concierge.state.store import StateStore
 
 logger = logging.getLogger(__name__)
 
 
 class RulesEngine:
-    """Engine for evaluating events against rules."""
+    """Engine for evaluating events against rules.
+
+    Supports:
+    - Standard condition matching
+    - Time-based threshold crossing detection (T077)
+    - Injectable TimeProvider for testability
+
+    The threshold crossing detection ensures that time-based rules
+    (like "PR open > 48h without review") only fire once when the
+    threshold is crossed, not repeatedly on every poll.
+    """
 
     def __init__(
         self,
         rules: list[Rule],
         *,
         now: datetime | None = None,
+        time_provider: TimeProvider | None = None,
+        state_store: StateStore | None = None,
     ) -> None:
         """Initialize rules engine.
 
         Args:
             rules: List of rules to evaluate.
-            now: Optional current time for time-based conditions.
+            now: Optional current time (deprecated, use time_provider).
+            time_provider: Optional TimeProvider for time-based conditions.
+            state_store: Optional StateStore for threshold deduplication.
         """
         self._rules = rules
         self._now = now
+        self._time_provider = time_provider or get_time_provider()
+        self._state_store = state_store
 
     @property
     def now(self) -> datetime:
         """Get current time."""
-        return self._now or datetime.now(UTC)
+        if self._now is not None:
+            return self._now
+        return self._time_provider.now()
 
     def evaluate(self, event: Event) -> MatchResult:
         """Evaluate an event against all rules.
@@ -56,6 +89,22 @@ class RulesEngine:
             matched, reason = self._evaluate_rule(event, rule)
 
             if matched:
+                # Check threshold deduplication for time-based rules
+                if self._is_threshold_rule(rule) and self._state_store is not None:
+                    threshold = self._get_rule_threshold(rule)
+                    entity_id = self._make_entity_id(event)
+
+                    if self._state_store.has_threshold_fired(
+                        entity_id, rule.id, threshold
+                    ):
+                        logger.debug(
+                            "Threshold already fired for %s on rule '%s' (threshold: %s)",
+                            entity_id,
+                            rule.id,
+                            threshold,
+                        )
+                        continue  # Skip - already fired
+
                 matches.append(
                     Match(
                         event=event,
@@ -113,7 +162,11 @@ class RulesEngine:
         conditions = trigger.conditions or []
         for condition in conditions:
             try:
-                matcher = get_matcher(condition, now=self._now)
+                matcher = get_matcher(
+                    condition,
+                    now=self._now,
+                    time_provider=self._time_provider,
+                )
                 matched, reason = matcher.matches(event, condition)
 
                 if not matched:
@@ -156,12 +209,64 @@ class RulesEngine:
 
         return result
 
+    def _is_threshold_rule(self, rule: Rule) -> bool:
+        """Check if a rule has time-based threshold conditions.
+
+        Args:
+            rule: Rule to check.
+
+        Returns:
+            True if rule has time_since or no_activity conditions.
+        """
+        conditions = rule.trigger.conditions or []
+        for condition in conditions:
+            if isinstance(condition, TimeSinceCondition | NoActivityCondition):
+                return True
+        return False
+
+    def _get_rule_threshold(self, rule: Rule) -> str:
+        """Get the threshold string from a time-based rule.
+
+        For rules with multiple thresholds, returns the first one.
+        This is used for deduplication key generation.
+
+        Args:
+            rule: Rule to get threshold from.
+
+        Returns:
+            Threshold string (e.g., "48h") or "default" if none found.
+        """
+        conditions = rule.trigger.conditions or []
+        for condition in conditions:
+            if isinstance(condition, TimeSinceCondition):
+                return condition.threshold
+            if isinstance(condition, NoActivityCondition):
+                # NoActivityCondition doesn't have a direct threshold,
+                # use the 'since' field as a stable identifier
+                return f"since:{condition.since}"
+        return "default"
+
+    def _make_entity_id(self, event: Event) -> str:
+        """Create a unique entity identifier from an event.
+
+        Args:
+            event: Event to create ID from.
+
+        Returns:
+            Entity ID in format "owner/repo#number" or event ID.
+        """
+        if event.entity_number:
+            return f"{event.repo_full_name}#{event.entity_number}"
+        return event.id
+
 
 def evaluate_rules(
     event: Event,
     rules: list[Rule],
     *,
     now: datetime | None = None,
+    time_provider: TimeProvider | None = None,
+    state_store: StateStore | None = None,
 ) -> MatchResult:
     """Evaluate an event against a list of rules.
 
@@ -170,12 +275,19 @@ def evaluate_rules(
     Args:
         event: Event to evaluate.
         rules: Rules to check.
-        now: Optional current time for time-based conditions.
+        now: Optional current time for time-based conditions (deprecated).
+        time_provider: Optional TimeProvider for time-based conditions.
+        state_store: Optional StateStore for threshold deduplication.
 
     Returns:
         MatchResult with all matching rules.
     """
-    engine = RulesEngine(rules, now=now)
+    engine = RulesEngine(
+        rules,
+        now=now,
+        time_provider=time_provider,
+        state_store=state_store,
+    )
     return engine.evaluate(event)
 
 
