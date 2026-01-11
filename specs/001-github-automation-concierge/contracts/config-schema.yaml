@@ -1,0 +1,242 @@
+# Configuration Schema
+# JSON Schema for ~/.concierge/config.yaml
+# Version: 1
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://github.com/PowerSchill/automation_concierge/config-schema.yaml"
+title: "Concierge Configuration"
+description: "Configuration file for Personal Automation Concierge"
+type: object
+
+required:
+  - version
+  - rules
+
+properties:
+  version:
+    type: integer
+    const: 1
+    description: "Schema version (must be 1)"
+
+  github:
+    type: object
+    description: "GitHub API settings"
+    properties:
+      poll_interval:
+        type: integer
+        minimum: 30
+        maximum: 300
+        default: 60
+        description: "Polling interval in seconds"
+      lookback_window:
+        type: integer
+        minimum: 300
+        maximum: 604800 # 7 days
+        default: 3600
+        description: "How far back to look on first run (seconds)"
+    additionalProperties: false
+
+  actions:
+    type: object
+    description: "Action type configurations"
+    properties:
+      slack:
+        type: object
+        description: "Slack notification settings"
+        required:
+          - webhook_url
+        properties:
+          webhook_url:
+            type: string
+            pattern: "^(https://hooks\\.slack\\.com/|\\$\\{.+\\}).*$"
+            description: "Slack webhook URL or env var reference (${VAR})"
+        additionalProperties: false
+      github_comment:
+        type: object
+        description: "GitHub comment settings"
+        properties:
+          enabled:
+            type: boolean
+            default: false
+            description: "Must be true to enable GitHub comments"
+        additionalProperties: false
+    additionalProperties: false
+
+  state:
+    type: object
+    description: "State storage settings"
+    properties:
+      directory:
+        type: string
+        description: "State directory path"
+      retention_days:
+        type: integer
+        minimum: 1
+        maximum: 365
+        default: 30
+        description: "How long to retain processed events"
+    additionalProperties: false
+
+  rules:
+    type: array
+    description: "List of automation rules"
+    minItems: 0
+    items:
+      $ref: "#/$defs/Rule"
+
+$defs:
+  Rule:
+    type: object
+    required:
+      - id
+      - name
+      - trigger
+      - action
+    properties:
+      id:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+        minLength: 2
+        maxLength: 64
+        description: "Unique rule identifier (lowercase, alphanumeric, hyphens)"
+      name:
+        type: string
+        minLength: 1
+        maxLength: 100
+        description: "Human-readable rule name"
+      enabled:
+        type: boolean
+        default: true
+        description: "Whether rule is active"
+      description:
+        type: string
+        maxLength: 500
+        description: "Optional rule description"
+      trigger:
+        $ref: "#/$defs/Trigger"
+      action:
+        $ref: "#/$defs/Action"
+    additionalProperties: false
+
+  Trigger:
+    type: object
+    required:
+      - event_type
+    properties:
+      event_type:
+        $ref: "#/$defs/EventType"
+      conditions:
+        type: array
+        items:
+          $ref: "#/$defs/Condition"
+    additionalProperties: false
+
+  Condition:
+    oneOf:
+      - $ref: "#/$defs/LabelCondition"
+      - $ref: "#/$defs/TimeSinceCondition"
+      - $ref: "#/$defs/NoActivityCondition"
+      - $ref: "#/$defs/RepoCondition"
+
+  LabelCondition:
+    type: object
+    required:
+      - type
+      - label
+    properties:
+      type:
+        type: string
+        enum: ["label_present", "label_added", "label_removed"]
+      label:
+        type: string
+        minLength: 1
+        maxLength: 50
+    additionalProperties: false
+
+  TimeSinceCondition:
+    type: object
+    required:
+      - type
+      - field
+      - threshold
+    properties:
+      type:
+        type: string
+        const: "time_since"
+      field:
+        type: string
+        enum: ["created_at", "updated_at"]
+      threshold:
+        type: string
+        pattern: "^\\d+[hd]$"
+        description: "Duration like '48h' or '7d'"
+    additionalProperties: false
+
+  NoActivityCondition:
+    type: object
+    required:
+      - type
+      - activity
+    properties:
+      type:
+        type: string
+        const: "no_activity"
+      activity:
+        type: string
+        enum: ["review", "comment", "commit"]
+      since:
+        type: string
+        enum: ["created_at", "updated_at"]
+        default: "created_at"
+    additionalProperties: false
+
+  RepoCondition:
+    type: object
+    required:
+      - type
+      - pattern
+    properties:
+      type:
+        type: string
+        const: "repo_match"
+      pattern:
+        type: string
+        description: "Glob pattern like 'myorg/*'"
+    additionalProperties: false
+
+  Action:
+    type: object
+    required:
+      - type
+      - message
+    properties:
+      type:
+        $ref: "#/$defs/ActionType"
+      message:
+        type: string
+        minLength: 1
+        maxLength: 1000
+        description: "Message template with {{ event.field }} placeholders"
+      opt_in:
+        type: boolean
+        description: "Required for github_comment action type"
+    additionalProperties: false
+
+  EventType:
+    type: string
+    enum:
+      - mention
+      - assignment
+      - review_request
+      - label_change
+      - pr_open
+      - issue_open
+      - comment
+      - review
+
+  ActionType:
+    type: string
+    enum:
+      - console
+      - slack
+      - github_comment

@@ -1,0 +1,44 @@
+{
+  "id": 100,
+  "number": 123,
+  "title": "Add new authentication flow",
+  "state": "open",
+  "locked": false,
+  "draft": false,
+  "user": {
+    "login": "contributor",
+    "id": 3
+  },
+  "labels": [],
+  "assignees": [],
+  "requested_reviewers": [
+    {
+      "login": "reviewer1",
+      "id": 4
+    }
+  ],
+  "created_at": "2026-01-08T09:00:00Z",
+  "updated_at": "2026-01-10T14:00:00Z",
+  "closed_at": null,
+  "merged_at": null,
+  "merge_commit_sha": null,
+  "body": "## Summary\n\nThis PR adds a new authentication flow using OAuth 2.0.\n\n## Changes\n\n- Added OAuth provider\n- Updated login page\n- Added tests",
+  "html_url": "https://github.com/octocat/hello-world/pull/123",
+  "diff_url": "https://github.com/octocat/hello-world/pull/123.diff",
+  "head": {
+    "ref": "feature/oauth",
+    "sha": "abc123def456"
+  },
+  "base": {
+    "ref": "main",
+    "sha": "789xyz000111"
+  },
+  "mergeable": true,
+  "merged": false,
+  "comments": 2,
+  "review_comments": 5,
+  "commits": 3,
+  "additions": 500,
+  "deletions": 100,
+  "changed_files": 15
+}
