@@ -208,7 +208,15 @@ class RepoMatcher(Matcher):
 
 
 class LabelMatcher(Matcher):
-    """Matcher for label conditions."""
+    """Matcher for label conditions (T078).
+
+    Supports three condition types:
+    - label_present: Label exists on the entity
+    - label_added: Label was added in this event
+    - label_removed: Label was removed in this event
+
+    Uses the Event's labels, labels_added, and labels_removed fields.
+    """
 
     def matches(  # noqa: PLR0911
         self,
@@ -228,26 +236,41 @@ class LabelMatcher(Matcher):
             return False, f"Expected LabelCondition, got {type(condition).__name__}"
 
         label = condition.label
-        labels_lower = [lbl.lower() for lbl in event.labels]
         label_lower = label.lower()
 
         # Check based on condition type
         if condition.type == "label_present":
+            labels_lower = [lbl.lower() for lbl in event.labels]
             if label_lower in labels_lower:
                 return True, f"Label '{label}' is present"
             return False, f"Label '{label}' is not present"
 
         if condition.type == "label_added":
-            # For label_added, we need the label to be in the current set
-            # (In a full implementation, we'd compare with previous state)
+            # Check the labels_added field first (T078)
+            if event.labels_added:
+                added_lower = [lbl.lower() for lbl in event.labels_added]
+                if label_lower in added_lower:
+                    return True, f"Label '{label}' was added"
+                return False, f"Label '{label}' was not added (added: {event.labels_added})"
+
+            # Fallback: if no labels_added info, check if label is present
+            labels_lower = [lbl.lower() for lbl in event.labels]
             if label_lower in labels_lower:
-                return True, f"Label '{label}' added (present in current labels)"
-            return False, f"Label '{label}' not added (not in current labels)"
+                return True, f"Label '{label}' is present (add event data unavailable)"
+            return False, f"Label '{label}' not in current labels"
 
         if condition.type == "label_removed":
-            # For label_removed, the label should NOT be present
+            # Check the labels_removed field first (T078)
+            if event.labels_removed:
+                removed_lower = [lbl.lower() for lbl in event.labels_removed]
+                if label_lower in removed_lower:
+                    return True, f"Label '{label}' was removed"
+                return False, f"Label '{label}' was not removed (removed: {event.labels_removed})"
+
+            # Fallback: if no labels_removed info, check if label is absent
+            labels_lower = [lbl.lower() for lbl in event.labels]
             if label_lower not in labels_lower:
-                return True, f"Label '{label}' is absent (removed)"
+                return True, f"Label '{label}' is absent (removal event data unavailable)"
             return False, f"Label '{label}' is still present"
 
         # Unknown type

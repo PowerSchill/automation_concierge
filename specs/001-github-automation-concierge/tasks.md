@@ -216,13 +216,13 @@
 
 ### Label Matchers
 
-- [ ] T078 [US5] Implement LabelCondition matcher (label_present, label_added, label_removed) in src/concierge/rules/matchers.py
-- [ ] T079 [US5] Implement label change detection from GitHub event payload in src/concierge/github/events.py
+- [x] T078 [US5] Implement LabelCondition matcher (label_present, label_added, label_removed) in src/concierge/rules/matchers.py
+- [x] T079 [US5] Implement label change detection from GitHub event payload in src/concierge/github/events.py
 
 ### Label Event Normalization
 
-- [ ] T080 [US5] Extend event normalization for label_change event type in src/concierge/github/events.py
-- [ ] T081 [US5] Add label list to Event model (current labels, added labels, removed labels) in src/concierge/github/events.py
+- [x] T080 [US5] Extend event normalization for label_change event type in src/concierge/github/events.py
+- [x] T081 [US5] Add label list to Event model (current labels, added labels, removed labels) in src/concierge/github/events.py
 
 **Checkpoint**: User Story 5 complete - label-based rules functional
 

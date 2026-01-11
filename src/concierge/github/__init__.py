@@ -15,6 +15,9 @@ from concierge.github.events import (
     Event,
     EventSource,
     EventType,
+    detect_label_changes,
+    extract_labels_from_payload,
+    normalize_label_event,
     normalize_notification,
 )
 
@@ -28,6 +31,9 @@ __all__ = [
     "GitHubClient",
     "RateLimitError",
     "TransientError",
+    "detect_label_changes",
+    "extract_labels_from_payload",
+    "normalize_label_event",
     "normalize_notification",
     "validate_token",
 ]
