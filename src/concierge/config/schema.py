@@ -26,6 +26,8 @@ from pydantic import (
     model_validator,
 )
 
+from concierge.paths import get_default_state_dir
+
 
 class EventType(str, Enum):
     """Type of GitHub activity that can trigger a rule."""
@@ -286,7 +288,8 @@ class StateConfig(BaseModel):
     """State storage configuration.
 
     Attributes:
-        directory: State directory path (default: ~/.concierge/)
+        directory: State directory path (default: XDG data dir)
+                   Uses $XDG_DATA_HOME/concierge (~/.local/share/concierge)
         retention_days: How long to retain processed events (1-365, default: 30)
     """
 
@@ -299,7 +302,7 @@ class StateConfig(BaseModel):
         """Get the state directory path, expanding ~ if needed."""
         if self.directory:
             return Path(self.directory).expanduser()
-        return Path.home() / ".concierge"
+        return get_default_state_dir()
 
 
 class Config(BaseModel):

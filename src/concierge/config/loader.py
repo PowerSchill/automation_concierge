@@ -3,7 +3,11 @@
 This module provides:
 - Environment variable expansion for config values (${VAR} syntax)
 - YAML config file loading with Pydantic validation
-- Config file discovery (--config, $CONCIERGE_CONFIG, ./concierge.yaml, ~/.concierge/config.yaml)
+- Config file discovery (--config, $CONCIERGE_CONFIG, ./concierge.yaml, XDG config path)
+
+Config discovery follows XDG Base Directory Specification:
+- Default: $XDG_CONFIG_HOME/concierge/config.yaml (~/.config/concierge/config.yaml)
+- Legacy fallback: ~/.concierge/config.yaml (for backward compatibility)
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import yaml
 from pydantic import ValidationError
 
 from concierge.config.schema import Config
+from concierge.paths import get_default_config_path
 
 
 class ConfigError(Exception):
@@ -147,7 +152,8 @@ def discover_config_path(explicit_path: str | Path | None = None) -> Path:
     1. explicit_path (from --config flag)
     2. $CONCIERGE_CONFIG environment variable
     3. ./concierge.yaml (current directory)
-    4. ~/.concierge/config.yaml (default location)
+    4. XDG config path ($XDG_CONFIG_HOME/concierge/config.yaml)
+       Falls back to ~/.concierge/config.yaml for legacy compatibility
 
     Args:
         explicit_path: Optional explicit path from CLI --config flag
@@ -182,11 +188,18 @@ def discover_config_path(explicit_path: str | Path | None = None) -> Path:
         return cwd_path
     candidates.append(cwd_path)
 
-    # 4. Default location
-    default_path = Path.home() / ".concierge" / "config.yaml"
+    # 4. XDG config path (with legacy fallback handled by get_default_config_path)
+    default_path = get_default_config_path()
     if default_path.exists():
         return default_path
     candidates.append(default_path)
+
+    # Also check legacy path explicitly if XDG path doesn't exist
+    legacy_path = Path.home() / ".concierge" / "config.yaml"
+    if legacy_path != default_path and legacy_path.exists():
+        return legacy_path
+    if legacy_path != default_path:
+        candidates.append(legacy_path)
 
     # No config found
     locations = "\n  - ".join(str(p) for p in candidates)
@@ -257,7 +270,7 @@ def load_config(
 
     Example:
         >>> config = load_config()  # Auto-discovers config
-        >>> config = load_config("~/.concierge/config.yaml")
+        >>> config = load_config("~/.config/concierge/config.yaml")
         >>> config.github.poll_interval
         60
     """

@@ -40,6 +40,7 @@ from concierge.config.loader import (
 from concierge.github import GitHubClient, normalize_notification, validate_token
 from concierge.github.auth import AuthenticationError
 from concierge.logging import configure_logging, get_logger
+from concierge.paths import get_default_state_dir
 from concierge.rules import RulesEngine
 from concierge.state import StateStore
 from concierge.state.store import Disposition, ResultStatus
@@ -330,7 +331,7 @@ def _run_once_impl(
         if cfg.state and cfg.state.directory:
             state_dir = Path(cfg.state.directory)
         else:
-            state_dir = Path.home() / ".concierge"
+            state_dir = get_default_state_dir()
 
     state_dir.mkdir(parents=True, exist_ok=True)
     db_path = state_dir / "state.db"
@@ -641,7 +642,7 @@ def _run_daemon_impl(  # noqa: PLR0915
         if cfg.state and cfg.state.directory:
             state_dir = Path(cfg.state.directory)
         else:
-            state_dir = Path.home() / ".concierge"
+            state_dir = get_default_state_dir()
 
     state_dir.mkdir(parents=True, exist_ok=True)
     db_path = state_dir / "state.db"
@@ -755,7 +756,7 @@ def status(
     """
     # Determine state directory
     if state_dir is None:
-        state_dir = Path.home() / ".concierge"
+        state_dir = get_default_state_dir()
 
     db_path = state_dir / "state.db"
 
@@ -841,7 +842,7 @@ def audit(
     """
     # Determine state directory
     if state_dir is None:
-        state_dir = Path.home() / ".concierge"
+        state_dir = get_default_state_dir()
 
     db_path = state_dir / "state.db"
 

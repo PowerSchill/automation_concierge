@@ -65,7 +65,8 @@ class StateStore:
         retention_days: How long to keep processed events (default: 30)
 
     Example:
-        >>> store = StateStore("~/.concierge/state.db")
+        >>> from concierge.paths import get_default_db_path
+        >>> store = StateStore(get_default_db_path())
         >>> checkpoint = store.get_checkpoint()
         >>> store.mark_processed("event_123", Disposition.ACTION_EXECUTED)
     """

@@ -33,7 +33,10 @@ pip install -e ".[dev]"
    export GITHUB_TOKEN="ghp_your_token_here"
    ```
 
-2. **Create a configuration file** (`~/.concierge/config.yaml`):
+2. **Create a configuration file** (`~/.config/concierge/config.yaml`):
+   ```bash
+   mkdir -p ~/.config/concierge
+   ```
    ```yaml
    version: 1
 
@@ -60,11 +63,22 @@ pip install -e ".[dev]"
    concierge run-once --dry-run
    ```
 
+## File Locations
+
+This application follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/):
+
+| Type       | Default Location                    | Environment Variable |
+| ---------- | ----------------------------------- | -------------------- |
+| Config     | `~/.config/concierge/config.yaml`   | `$XDG_CONFIG_HOME`   |
+| Data/State | `~/.local/share/concierge/state.db` | `$XDG_DATA_HOME`     |
+
+For backward compatibility, the legacy location `~/.concierge/` is also checked if the XDG paths don't exist.
+
 ## CLI Commands
 
 ```bash
 # Validate configuration
-concierge validate --config ~/.concierge/config.yaml
+concierge validate --config ~/.config/concierge/config.yaml
 
 # Run single poll cycle
 concierge run-once

@@ -8,8 +8,9 @@ This module provides SQLite-based state persistence for:
 
 Usage:
     from concierge.state import StateStore
+    from concierge.paths import get_default_db_path
 
-    store = StateStore("~/.concierge/state.db")
+    store = StateStore(get_default_db_path())  # XDG data path
     checkpoint = store.get_checkpoint()
     store.mark_processed(event_id, disposition)
 """

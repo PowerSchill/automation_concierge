@@ -62,6 +62,9 @@ Thumbs.db
 # Logs
 *.log
 
-# Concierge specific
+# Concierge specific - XDG paths
+~/.config/concierge/
+~/.local/share/concierge/
+# Legacy path (for backward compatibility)
 ~/.concierge/
 state.db
