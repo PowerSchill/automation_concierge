@@ -40,6 +40,13 @@ from concierge.config.loader import (
 from concierge.github import GitHubClient, normalize_notification, validate_token
 from concierge.github.auth import AuthenticationError
 from concierge.logging import configure_logging, get_logger
+from concierge.logging.audit import (
+    log_action_taken,
+    log_decision,
+    log_event_received,
+    log_poll_cycle,
+    log_rule_evaluated,
+)
 from concierge.paths import get_default_state_dir
 from concierge.rules import RulesEngine
 from concierge.state import StateStore
@@ -429,7 +436,7 @@ async def _validate_auth(log: structlog.stdlib.BoundLogger) -> None:
     log.info("GitHub authentication successful", user=result["user"])
 
 
-async def _poll_cycle(  # noqa: PLR0912
+async def _poll_cycle(  # noqa: PLR0912, PLR0915
     cfg: Config,
     store: StateStore,
     since: datetime,
@@ -448,6 +455,7 @@ async def _poll_cycle(  # noqa: PLR0912
     Returns:
         Dictionary with counts: events_processed, actions_executed, errors
     """
+    cycle_start = time.perf_counter()
     events_processed = 0
     actions_executed = 0
     errors = 0
@@ -470,6 +478,13 @@ async def _poll_cycle(  # noqa: PLR0912
             # Normalize to Event
             event = normalize_notification(notification)
             log.debug("Received event", event_id=event.id, event_type=event.event_type)
+
+            # Log event received with structured logging
+            log_event_received(
+                event_id=event.id,
+                event_type=event.event_type.value,
+                event_source=event.entity_id,
+            )
 
             # Check if already processed
             if store.is_processed(event.id):
@@ -499,6 +514,15 @@ async def _poll_cycle(  # noqa: PLR0912
                     "match_reason": match.match_reason,
                 })
 
+                # Log rule evaluation with structured logging
+                log_rule_evaluated(
+                    event_id=event.id,
+                    rule_id=rule.id,
+                    rule_name=rule.name,
+                    matched=True,
+                    match_reason=match.match_reason,
+                )
+
                 # Check if action already executed for this event+rule
                 if store.has_action_executed(event.id, rule.id):
                     log.debug(
@@ -512,6 +536,11 @@ async def _poll_cycle(  # noqa: PLR0912
                 action_results = executor.execute_all(match)
 
                 for action_result in action_results:
+                    # Get message preview for logging (first 100 chars)
+                    message_preview = None
+                    if action_result.message:
+                        message_preview = action_result.message[:100]
+
                     if action_result.status == ActionStatus.SUCCESS:
                         actions_executed += 1
                         store.record_action(
@@ -525,6 +554,15 @@ async def _poll_cycle(  # noqa: PLR0912
                             "result": "success",
                             "target": event.entity_id,
                         })
+                        # Log action with structured logging
+                        log_action_taken(
+                            event_id=event.id,
+                            rule_id=rule.id,
+                            action_type=action_result.action_type.value,
+                            target=event.entity_id,
+                            result="success",
+                            message_preview=message_preview,
+                        )
                     elif action_result.status == ActionStatus.FAILURE:
                         errors += 1
                         store.record_action(
@@ -539,12 +577,30 @@ async def _poll_cycle(  # noqa: PLR0912
                             "result": "failed",
                             "message": action_result.message,
                         })
+                        # Log action failure with structured logging
+                        log_action_taken(
+                            event_id=event.id,
+                            rule_id=rule.id,
+                            action_type=action_result.action_type.value,
+                            target=event.entity_id,
+                            result="failed",
+                            error=action_result.message,
+                        )
                     elif action_result.status == ActionStatus.DRY_RUN:
                         actions_taken.append({
                             "action_type": action_result.action_type.value,
                             "result": "dry_run",
                             "target": event.entity_id,
                         })
+                        # Log dry-run action with structured logging
+                        log_action_taken(
+                            event_id=event.id,
+                            rule_id=rule.id,
+                            action_type=action_result.action_type.value,
+                            target=event.entity_id,
+                            result="dry_run",
+                            message_preview=message_preview,
+                        )
 
             # Determine disposition
             if result.has_matches:
@@ -571,11 +627,31 @@ async def _poll_cycle(  # noqa: PLR0912
                 actions_taken=actions_taken,
             )
 
+            # Log full decision trail with structured logging
+            log_decision(
+                event_id=event.id,
+                event_type=event.event_type.value,
+                event_source=event.entity_id,
+                rules_evaluated=rules_evaluated,
+                actions_taken=actions_taken,
+                disposition=disposition.value,
+                message=f"Processed {event.event_type.value} event from {event.repo_full_name}",
+            )
+
     log.info(
         "Poll cycle complete",
         events_processed=events_processed,
         actions_executed=actions_executed,
         errors=errors,
+    )
+
+    # Log poll cycle with structured logging (includes duration)
+    cycle_duration_ms = (time.perf_counter() - cycle_start) * 1000
+    log_poll_cycle(
+        events_fetched=events_processed,  # All fetched events were processed
+        events_processed=events_processed,
+        actions_taken=actions_executed,
+        duration_ms=cycle_duration_ms,
     )
 
     return {

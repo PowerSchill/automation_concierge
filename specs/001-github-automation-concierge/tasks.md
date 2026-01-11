@@ -132,19 +132,19 @@
 
 ### Audit Logging
 
-- [ ] T054 [US2] Implement AuditLogEntry model in src/concierge/state/store.py (per data-model.md: rules_evaluated, actions_taken, disposition)
-- [ ] T055 [US2] Implement audit log write on each event processing in src/concierge/state/store.py
-- [ ] T056 [US2] Implement log_decision() function with full decision trail in src/concierge/logging/audit.py
+- [x] T054 [US2] Implement AuditLogEntry model in src/concierge/state/store.py (per data-model.md: rules_evaluated, actions_taken, disposition)
+- [x] T055 [US2] Implement audit log write on each event processing in src/concierge/state/store.py
+- [x] T056 [US2] Implement log_decision() function with full decision trail in src/concierge/logging/audit.py
 
 ### Audit Query CLI
 
-- [ ] T057 [US2] Implement `concierge audit` command in src/concierge/cli.py (--since, --rule, --limit options)
-- [ ] T058 [US2] Implement `concierge status` command in src/concierge/cli.py (show last checkpoint, pending events count)
+- [x] T057 [US2] Implement `concierge audit` command in src/concierge/cli.py (--since, --rule, --limit options)
+- [x] T058 [US2] Implement `concierge status` command in src/concierge/cli.py (show last checkpoint, pending events count)
 
 ### Enhanced Logging
 
-- [ ] T059 [US2] Add structured log events: event_received, rule_evaluated, action_taken in src/concierge/logging/audit.py
-- [ ] T060 [US2] Implement match_reason string generation for each rule evaluation in src/concierge/rules/engine.py
+- [x] T059 [US2] Add structured log events: event_received, rule_evaluated, action_taken in src/concierge/logging/audit.py
+- [x] T060 [US2] Implement match_reason string generation for each rule evaluation in src/concierge/rules/engine.py
 
 **Checkpoint**: User Story 2 complete - user can explain any action via audit log or CLI
 
