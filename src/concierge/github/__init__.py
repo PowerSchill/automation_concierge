@@ -5,8 +5,10 @@ from concierge.github.auth import (
     validate_token,
 )
 from concierge.github.client import (
+    DEFAULT_LOOKBACK_WINDOW,
     GitHubClient,
     RateLimitError,
+    TransientError,
 )
 from concierge.github.events import (
     Event,
@@ -17,11 +19,13 @@ from concierge.github.events import (
 
 __all__ = [
     "AuthenticationError",
+    "DEFAULT_LOOKBACK_WINDOW",
     "Event",
     "EventSource",
     "EventType",
     "GitHubClient",
     "RateLimitError",
+    "TransientError",
     "normalize_notification",
     "validate_token",
 ]

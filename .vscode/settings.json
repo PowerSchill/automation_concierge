@@ -11,6 +11,14 @@
         ".specify/scripts/powershell/": true,
         "ruff": true,
         "pyright": true,
-        ".venv/bin/ruff": true
+        ".venv/bin/ruff": true,
+        "/^source \\.venv/bin/activate && python -m concierge --help$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m concierge run --help$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }

@@ -15,7 +15,7 @@ Usage:
     store.mark_processed(event_id, disposition)
 """
 
-from concierge.state.checkpoint import Checkpoint
+from concierge.state.checkpoint import Checkpoint, save_checkpoint_atomic
 from concierge.state.migrations import CURRENT_SCHEMA_VERSION, migrate_database
 from concierge.state.store import StateStore
 
@@ -24,4 +24,5 @@ __all__ = [
     "Checkpoint",
     "StateStore",
     "migrate_database",
+    "save_checkpoint_atomic",
 ]

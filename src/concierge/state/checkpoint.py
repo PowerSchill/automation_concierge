@@ -6,8 +6,15 @@ enabling resumable polling and preventing duplicate event processing.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from concierge.state.store import StateStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -80,6 +87,17 @@ class Checkpoint:
             updated_at=datetime.now(UTC),
         )
 
+    def is_empty(self) -> bool:
+        """Check if this is an empty/new checkpoint.
+
+        Returns:
+            True if no events or polls have been recorded.
+        """
+        return (
+            self.last_event_timestamp is None
+            and self.last_poll_timestamp is None
+        )
+
 
 def _parse_timestamp(value: str | None) -> datetime | None:
     """Parse an ISO format timestamp string to datetime.
@@ -120,3 +138,34 @@ def format_timestamp(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     return dt.isoformat()
+
+
+def save_checkpoint_atomic(store: StateStore, checkpoint: Checkpoint) -> None:
+    """Save checkpoint atomically after successful poll cycle.
+
+    This function ensures that the checkpoint is saved atomically,
+    preventing partial writes that could corrupt state.
+
+    The atomic save is implemented via SQLite's transaction mechanism
+    in the StateStore.save_checkpoint method, which uses BEGIN/COMMIT.
+
+    Args:
+        store: StateStore instance to save checkpoint to.
+        checkpoint: Checkpoint to save.
+    """
+    # Update the timestamp before saving
+    checkpoint_to_save = Checkpoint(
+        id=checkpoint.id,
+        last_event_timestamp=checkpoint.last_event_timestamp,
+        last_poll_timestamp=checkpoint.last_poll_timestamp,
+        updated_at=datetime.now(UTC),
+    )
+
+    # The StateStore.save_checkpoint already uses transactions for atomicity
+    store.save_checkpoint(checkpoint_to_save)
+    logger.debug(
+        "Atomically saved checkpoint: id=%s, last_event=%s, last_poll=%s",
+        checkpoint_to_save.id,
+        checkpoint_to_save.last_event_timestamp,
+        checkpoint_to_save.last_poll_timestamp,
+    )

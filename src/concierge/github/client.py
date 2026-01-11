@@ -1,13 +1,23 @@
-"""GitHub API client with rate limiting and pagination."""
+"""GitHub API client with rate limiting and pagination.
+
+This module provides the GitHubClient class which handles:
+- Rate limit checking with proactive pausing (pause when remaining < 100)
+- Jitter on rate limit pauses (sleep until reset + random 0-10s jitter)
+- 403 rate limit response handling with retry
+- Exponential backoff for transient failures (5xx, network errors)
+- Secondary rate limit (abuse detection) handling
+- Lookback window for first run
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import httpx
 
@@ -17,6 +27,9 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
+
+# Default lookback window for first run (1 hour in seconds)
+DEFAULT_LOOKBACK_WINDOW = 3600
 
 
 class RateLimitError(Exception):
@@ -29,6 +42,7 @@ class RateLimitError(Exception):
         reset_at: datetime | None = None,
         remaining: int = 0,
         limit: int = 5000,
+        is_secondary: bool = False,
     ) -> None:
         """Initialize rate limit error.
 
@@ -37,11 +51,38 @@ class RateLimitError(Exception):
             reset_at: When the rate limit resets.
             remaining: Remaining requests.
             limit: Total rate limit.
+            is_secondary: Whether this is a secondary (abuse) rate limit.
         """
         super().__init__(message)
         self.reset_at = reset_at
         self.remaining = remaining
         self.limit = limit
+        self.is_secondary = is_secondary
+
+
+class TransientError(Exception):
+    """Raised for transient errors that should be retried.
+
+    This includes 5xx server errors and network connectivity errors.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        """Initialize transient error.
+
+        Args:
+            message: Error description.
+            status_code: HTTP status code if available.
+            retry_after: Suggested retry delay in seconds.
+        """
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 class GitHubAPIError(Exception):
@@ -108,10 +149,33 @@ class RateLimitInfo:
 
 
 class GitHubClient:
-    """Async GitHub API client with rate limiting and pagination."""
+    """Async GitHub API client with rate limiting and pagination.
+
+    Features:
+    - Proactive rate limit checking (pause when remaining < 100)
+    - Jitter on rate limit pauses (sleep until reset + random 0-10s)
+    - 403 rate limit response handling with automatic retry
+    - Exponential backoff for transient failures (5xx, network errors)
+    - Secondary rate limit (abuse detection) handling
+    - Lookback window for first run
+
+    The client supports both context manager and standalone usage.
+    """
 
     # Threshold to pause before hitting rate limit
     RATE_LIMIT_THRESHOLD = 100
+
+    # Jitter range for rate limit pause (0-10 seconds)
+    RATE_LIMIT_JITTER_MIN = 0
+    RATE_LIMIT_JITTER_MAX = 10
+
+    # Exponential backoff settings for transient errors
+    MAX_RETRIES = 4
+    INITIAL_BACKOFF_SECONDS = 60  # 1 minute
+    MAX_BACKOFF_SECONDS = 480  # 8 minutes
+
+    # Secondary rate limit backoff (abuse detection)
+    SECONDARY_BACKOFF_MULTIPLIERS: ClassVar[list[int]] = [1, 2, 4, 8]  # minutes
 
     def __init__(
         self,
@@ -119,6 +183,7 @@ class GitHubClient:
         *,
         base_url: str = "https://api.github.com",
         user_agent: str = "automation-concierge/0.1.0",
+        lookback_window: int = DEFAULT_LOOKBACK_WINDOW,
     ) -> None:
         """Initialize GitHub client.
 
@@ -126,12 +191,15 @@ class GitHubClient:
             token: GitHub personal access token. If None, reads from GITHUB_TOKEN.
             base_url: GitHub API base URL.
             user_agent: User-Agent header value.
+            lookback_window: How far back to look on first run in seconds (default: 3600).
         """
         self._token = token if token is not None else get_github_token()
         self._base_url = base_url.rstrip("/")
         self._user_agent = user_agent
+        self._lookback_window = lookback_window
         self._client: httpx.AsyncClient | None = None
         self._rate_limit: RateLimitInfo | None = None
+        self._secondary_rate_limit_retries = 0
 
     @property
     def headers(self) -> dict[str, str]:
@@ -167,6 +235,19 @@ class GitHubClient:
         """Get current rate limit information."""
         return self._rate_limit
 
+    @property
+    def lookback_window(self) -> int:
+        """Get the lookback window in seconds for first run."""
+        return self._lookback_window
+
+    def get_lookback_since(self) -> datetime:
+        """Get the 'since' timestamp for first run based on lookback window.
+
+        Returns:
+            datetime in UTC representing how far back to look.
+        """
+        return datetime.now(UTC) - timedelta(seconds=self._lookback_window)
+
     async def _ensure_client(self) -> httpx.AsyncClient:
         """Ensure we have an active client."""
         if self._client is None:
@@ -181,17 +262,27 @@ class GitHubClient:
         """Check if we should pause due to rate limiting.
 
         This method checks the current rate limit status and pauses
-        if we're getting close to the limit.
+        if we're getting close to the limit. Implements proactive
+        rate limit checking as specified in plan.md:
+        - Pause when remaining < 100 (RATE_LIMIT_THRESHOLD)
+        - Sleep until reset + random jitter (0-10s)
         """
         if self._rate_limit is None:
             return
 
         if self._rate_limit.remaining < self.RATE_LIMIT_THRESHOLD:
-            wait_time = self._rate_limit.seconds_until_reset + 10  # Add 10s buffer
+            # Add random jitter between 0-10 seconds
+            jitter = random.uniform(
+                self.RATE_LIMIT_JITTER_MIN,
+                self.RATE_LIMIT_JITTER_MAX,
+            )
+            wait_time = self._rate_limit.seconds_until_reset + jitter
             logger.warning(
-                "Rate limit low (%d remaining), pausing for %.0f seconds",
+                "Rate limit low (%d remaining), pausing for %.0f seconds "
+                "(reset + %.1fs jitter)",
                 self._rate_limit.remaining,
                 wait_time,
+                jitter,
             )
             await asyncio.sleep(wait_time)
 
@@ -209,6 +300,7 @@ class GitHubClient:
 
         Raises:
             RateLimitError: If rate limit exceeded.
+            TransientError: For 5xx errors that should be retried.
             GitHubAPIError: For other API errors.
         """
         # Update rate limit info
@@ -226,28 +318,28 @@ class GitHubClient:
             body = response.json() if response.content else {}
             message = body.get("message", "")
 
-            if "rate limit" in message.lower():
+            # Primary rate limit error
+            if "rate limit" in message.lower() or self._rate_limit.remaining == 0:
                 raise RateLimitError(
                     f"GitHub API rate limit exceeded: {message}",
                     reset_at=self._rate_limit.reset_at,
                     remaining=self._rate_limit.remaining,
                     limit=self._rate_limit.limit,
+                    is_secondary=False,
                 )
 
             # Secondary rate limit (abuse detection)
-            if "secondary rate limit" in message.lower():
-                # Wait and retry
+            if (
+                "secondary rate limit" in message.lower()
+                or "abuse" in message.lower()
+            ):
                 retry_after = int(response.headers.get("Retry-After", 60))
-                logger.warning(
-                    "Secondary rate limit hit, waiting %d seconds",
-                    retry_after,
-                )
-                await asyncio.sleep(retry_after)
                 raise RateLimitError(
                     f"GitHub secondary rate limit: {message}",
                     reset_at=self._rate_limit.reset_at,
                     remaining=self._rate_limit.remaining,
                     limit=self._rate_limit.limit,
+                    is_secondary=True,
                 )
 
             raise GitHubAPIError(
@@ -263,9 +355,12 @@ class GitHubClient:
             )
 
         if response.status_code >= 500:
-            raise GitHubAPIError(
+            # Transient server error - should be retried with backoff
+            retry_after = int(response.headers.get("Retry-After", 0)) or None
+            raise TransientError(
                 f"GitHub API server error: {response.status_code}",
                 status_code=response.status_code,
+                retry_after=retry_after,
             )
 
         # Other errors
@@ -280,6 +375,152 @@ class GitHubClient:
             response_body=body,
         )
 
+    async def _request_with_retry(  # noqa: PLR0912, PLR0915
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Make a request with automatic retry for transient errors.
+
+        Implements:
+        - Exponential backoff for 5xx and network errors (1min → 2min → 4min → 8min)
+        - Rate limit handling with jitter pause
+        - Secondary rate limit handling with exponential backoff
+
+        Args:
+            method: HTTP method.
+            path: API path or full URL.
+            params: Query parameters.
+
+        Returns:
+            Parsed JSON response.
+
+        Raises:
+            GitHubAPIError: For non-recoverable errors.
+            RateLimitError: If rate limit exceeded after retries.
+        """
+        client = await self._ensure_client()
+        last_error: Exception | None = None
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                await self._check_rate_limit()
+
+                # Determine if path is a full URL or a path
+                if path.startswith("http"):
+                    response = await client.request(method, path)
+                else:
+                    response = await client.request(method, path, params=params)
+
+                # Reset secondary rate limit counter on success
+                self._secondary_rate_limit_retries = 0
+                return await self._handle_response(response)
+
+            except RateLimitError as e:
+                if e.is_secondary:
+                    # Secondary rate limit - exponential backoff
+                    if self._secondary_rate_limit_retries >= len(
+                        self.SECONDARY_BACKOFF_MULTIPLIERS
+                    ):
+                        logger.error(
+                            "Secondary rate limit: max retries exceeded (%d)",
+                            self._secondary_rate_limit_retries,
+                        )
+                        raise
+
+                    backoff_minutes = self.SECONDARY_BACKOFF_MULTIPLIERS[
+                        self._secondary_rate_limit_retries
+                    ]
+                    wait_time = backoff_minutes * 60
+                    self._secondary_rate_limit_retries += 1
+
+                    logger.warning(
+                        "Secondary rate limit hit (attempt %d/%d), "
+                        "waiting %d minutes",
+                        self._secondary_rate_limit_retries,
+                        len(self.SECONDARY_BACKOFF_MULTIPLIERS),
+                        backoff_minutes,
+                    )
+                    await asyncio.sleep(wait_time)
+                    last_error = e
+                    continue
+                else:
+                    # Primary rate limit - wait until reset + jitter
+                    if e.reset_at:
+                        jitter = random.uniform(
+                            self.RATE_LIMIT_JITTER_MIN,
+                            self.RATE_LIMIT_JITTER_MAX,
+                        )
+                        wait_time = (
+                            e.reset_at - datetime.now(UTC)
+                        ).total_seconds() + jitter
+                        wait_time = max(0, wait_time)
+
+                        logger.warning(
+                            "Rate limit exceeded, waiting %.0f seconds "
+                            "(reset + %.1fs jitter)",
+                            wait_time,
+                            jitter,
+                        )
+                        await asyncio.sleep(wait_time)
+                        last_error = e
+                        continue
+                    raise
+
+            except TransientError as e:
+                # Exponential backoff: 1min → 2min → 4min → 8min
+                backoff = min(
+                    self.INITIAL_BACKOFF_SECONDS * (2**attempt),
+                    self.MAX_BACKOFF_SECONDS,
+                )
+                # Use server-provided retry-after if available
+                if e.retry_after:
+                    backoff = e.retry_after
+
+                logger.warning(
+                    "Transient error (attempt %d/%d): %s. "
+                    "Retrying in %d seconds",
+                    attempt + 1,
+                    self.MAX_RETRIES,
+                    e,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                last_error = e
+                continue
+
+            except httpx.RequestError as e:
+                # Network errors - also use exponential backoff
+                backoff = min(
+                    self.INITIAL_BACKOFF_SECONDS * (2**attempt),
+                    self.MAX_BACKOFF_SECONDS,
+                )
+                logger.warning(
+                    "Network error (attempt %d/%d): %s. "
+                    "Retrying in %d seconds",
+                    attempt + 1,
+                    self.MAX_RETRIES,
+                    e,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                last_error = e
+                continue
+
+        # If we get here, we've exhausted retries
+        if last_error:
+            if isinstance(last_error, RateLimitError | GitHubAPIError):
+                raise last_error
+            raise GitHubAPIError(
+                f"Request failed after {self.MAX_RETRIES} retries: {last_error}",
+                status_code=None,
+            ) from last_error
+
+        # Should not reach here
+        raise GitHubAPIError("Request failed with unknown error")
+
     async def get(
         self,
         path: str,
@@ -288,6 +529,8 @@ class GitHubClient:
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Make a GET request to the GitHub API.
 
+        Uses automatic retry with exponential backoff for transient errors.
+
         Args:
             path: API path (e.g., "/notifications").
             params: Query parameters.
@@ -295,11 +538,7 @@ class GitHubClient:
         Returns:
             Parsed JSON response.
         """
-        await self._check_rate_limit()
-        client = await self._ensure_client()
-
-        response = await client.get(path, params=params)
-        return await self._handle_response(response)
+        return await self._request_with_retry("GET", path, params=params)
 
     async def get_paginated(
         self,
@@ -310,6 +549,8 @@ class GitHubClient:
     ) -> AsyncIterator[dict[str, Any]]:
         """Make paginated GET requests to the GitHub API.
 
+        Uses automatic retry with exponential backoff for transient errors.
+
         Args:
             path: API path.
             params: Query parameters.
@@ -318,26 +559,22 @@ class GitHubClient:
         Yields:
             Items from each page.
         """
-        await self._check_rate_limit()
-        client = await self._ensure_client()
-
         params = dict(params or {})
         params.setdefault("per_page", 100)
 
         next_url: str | None = path
         page_count = 0
+        current_params: dict[str, Any] | None = params
 
         while next_url:
             if max_pages and page_count >= max_pages:
                 break
 
-            # Determine if this is a full URL or a path
-            if next_url.startswith("http"):
-                response = await client.get(next_url)
-            else:
-                response = await client.get(next_url, params=params)
-
-            result = await self._handle_response(response)
+            # Use the internal paginated request that returns both data and next URL
+            result, next_url = await self._get_page_with_link(
+                next_url,
+                params=current_params,
+            )
 
             # Yield items
             if isinstance(result, list):
@@ -347,12 +584,134 @@ class GitHubClient:
                 yield result
 
             page_count += 1
-
-            # Parse Link header for next page
-            next_url = self._parse_next_link(response.headers.get("Link", ""))
-
             # Clear params for subsequent requests (they're in the URL)
-            params = {}
+            current_params = None
+
+    async def _get_page_with_link(  # noqa: PLR0912, PLR0915
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any] | list[dict[str, Any]], str | None]:
+        """Get a single page and return data with next link.
+
+        Uses automatic retry with exponential backoff.
+
+        Args:
+            path: API path or full URL.
+            params: Query parameters.
+
+        Returns:
+            Tuple of (data, next_url) where next_url is None if no more pages.
+        """
+        client = await self._ensure_client()
+        last_error: Exception | None = None
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                await self._check_rate_limit()
+
+                # Determine if path is a full URL or a path
+                if path.startswith("http"):
+                    response = await client.get(path)
+                else:
+                    response = await client.get(path, params=params)
+
+                # Reset secondary rate limit counter on success
+                self._secondary_rate_limit_retries = 0
+                result = await self._handle_response(response)
+
+                # Parse Link header for next page
+                next_url = self._parse_next_link(response.headers.get("Link", ""))
+
+                return result, next_url
+
+            except RateLimitError as e:
+                if e.is_secondary:
+                    if self._secondary_rate_limit_retries >= len(
+                        self.SECONDARY_BACKOFF_MULTIPLIERS
+                    ):
+                        raise
+
+                    backoff_minutes = self.SECONDARY_BACKOFF_MULTIPLIERS[
+                        self._secondary_rate_limit_retries
+                    ]
+                    wait_time = backoff_minutes * 60
+                    self._secondary_rate_limit_retries += 1
+
+                    logger.warning(
+                        "Secondary rate limit hit (attempt %d/%d), "
+                        "waiting %d minutes",
+                        self._secondary_rate_limit_retries,
+                        len(self.SECONDARY_BACKOFF_MULTIPLIERS),
+                        backoff_minutes,
+                    )
+                    await asyncio.sleep(wait_time)
+                    last_error = e
+                    continue
+                else:
+                    if e.reset_at:
+                        jitter = random.uniform(
+                            self.RATE_LIMIT_JITTER_MIN,
+                            self.RATE_LIMIT_JITTER_MAX,
+                        )
+                        wait_time = (
+                            e.reset_at - datetime.now(UTC)
+                        ).total_seconds() + jitter
+                        wait_time = max(0, wait_time)
+
+                        logger.warning(
+                            "Rate limit exceeded, waiting %.0f seconds",
+                            wait_time,
+                        )
+                        await asyncio.sleep(wait_time)
+                        last_error = e
+                        continue
+                    raise
+
+            except TransientError as e:
+                backoff = min(
+                    self.INITIAL_BACKOFF_SECONDS * (2**attempt),
+                    self.MAX_BACKOFF_SECONDS,
+                )
+                if e.retry_after:
+                    backoff = e.retry_after
+
+                logger.warning(
+                    "Transient error (attempt %d/%d): %s. Retrying in %d seconds",
+                    attempt + 1,
+                    self.MAX_RETRIES,
+                    e,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                last_error = e
+                continue
+
+            except httpx.RequestError as e:
+                backoff = min(
+                    self.INITIAL_BACKOFF_SECONDS * (2**attempt),
+                    self.MAX_BACKOFF_SECONDS,
+                )
+                logger.warning(
+                    "Network error (attempt %d/%d): %s. Retrying in %d seconds",
+                    attempt + 1,
+                    self.MAX_RETRIES,
+                    e,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                last_error = e
+                continue
+
+        if last_error:
+            if isinstance(last_error, RateLimitError | GitHubAPIError):
+                raise last_error
+            raise GitHubAPIError(
+                f"Request failed after {self.MAX_RETRIES} retries: {last_error}",
+            ) from last_error
+
+        raise GitHubAPIError("Request failed with unknown error")
 
     @staticmethod
     def _parse_next_link(link_header: str) -> str | None:

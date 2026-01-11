@@ -158,25 +158,25 @@
 
 ### Rate Limit Handling
 
-- [ ] T061 [US3] Implement proactive rate limit check (pause when remaining < 100) in src/concierge/github/client.py
-- [ ] T062 [US3] Implement rate limit pause with jitter (sleep until reset + 10s) in src/concierge/github/client.py
-- [ ] T063 [US3] Implement 403 rate limit response handling with retry in src/concierge/github/client.py
+- [x] T061 [US3] Implement proactive rate limit check (pause when remaining < 100) in src/concierge/github/client.py
+- [x] T062 [US3] Implement rate limit pause with jitter (sleep until reset + 10s) in src/concierge/github/client.py
+- [x] T063 [US3] Implement 403 rate limit response handling with retry in src/concierge/github/client.py
 
 ### Retry & Resilience
 
-- [ ] T064 [US3] Implement exponential backoff for transient failures (5xx, network errors) in src/concierge/github/client.py
-- [ ] T065 [US3] Implement secondary rate limit handling (abuse detection 403) in src/concierge/github/client.py
+- [x] T064 [US3] Implement exponential backoff for transient failures (5xx, network errors) in src/concierge/github/client.py
+- [x] T065 [US3] Implement secondary rate limit handling (abuse detection 403) in src/concierge/github/client.py
 
 ### Checkpoint Resume
 
-- [ ] T066 [US3] Implement checkpoint load on startup in src/concierge/cli.py
-- [ ] T067 [US3] Implement lookback_window for first run (default 3600s) in src/concierge/github/client.py
-- [ ] T068 [US3] Implement checkpoint atomic save after each successful poll cycle in src/concierge/state/checkpoint.py
+- [x] T066 [US3] Implement checkpoint load on startup in src/concierge/cli.py
+- [x] T067 [US3] Implement lookback_window for first run (default 3600s) in src/concierge/github/client.py
+- [x] T068 [US3] Implement checkpoint atomic save after each successful poll cycle in src/concierge/state/checkpoint.py
 
 ### Poll Loop Refinements
 
-- [ ] T069 [US3] Implement poll interval with jitter (0-10% random) in src/concierge/cli.py
-- [ ] T070 [US3] Implement poll_interval CLI override (--poll-interval, 30-300 range validation) in src/concierge/cli.py
+- [x] T069 [US3] Implement poll interval with jitter (0-10% random) in src/concierge/cli.py
+- [x] T070 [US3] Implement poll_interval CLI override (--poll-interval, 30-300 range validation) in src/concierge/cli.py
 
 **Checkpoint**: User Story 3 complete - system operates reliably for extended periods
 

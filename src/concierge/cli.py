@@ -13,6 +13,13 @@ Exit codes:
 - 2: Authentication error
 - 3: Partial failure
 - 4: Fatal error
+
+Phase 5 (US3) Features:
+- Checkpoint load on startup for resume
+- Lookback window for first run (default 3600s from config)
+- Poll interval with jitter (0-10% random)
+- Poll interval CLI override (--poll-interval, 30-300 range)
+- Checkpoint atomic save after each poll cycle
 """
 
 from __future__ import annotations
@@ -50,12 +57,16 @@ from concierge.logging.audit import (
 from concierge.paths import get_default_state_dir
 from concierge.rules import RulesEngine
 from concierge.state import StateStore
+from concierge.state.checkpoint import save_checkpoint_atomic
 from concierge.state.store import Disposition, ResultStatus
 
 if TYPE_CHECKING:
     import structlog
 
     from concierge.config.schema import Config
+
+# Poll interval jitter range (0-10% of poll_interval)
+POLL_JITTER_FRACTION = 0.1
 
 
 # Exit codes per plan.md specification
@@ -309,7 +320,7 @@ def run_once(
     _run_once_impl(cfg, state_dir, dry_run, verbose, log)
 
 
-def _run_once_impl(
+def _run_once_impl(  # noqa: PLR0915
     cfg: Config,
     state_dir: Path | None,
     dry_run: bool,
@@ -317,6 +328,11 @@ def _run_once_impl(
     log: structlog.stdlib.BoundLogger,
 ) -> None:
     """Implementation of single poll cycle.
+
+    Implements US3 features:
+    - Checkpoint load on startup for resume
+    - Lookback window for first run (from config, default 3600s)
+    - Checkpoint atomic save after poll cycle
 
     Args:
         cfg: Configuration object
@@ -348,13 +364,18 @@ def _run_once_impl(
     log.info("Initialized state store", path=str(db_path))
 
     try:
-        # Load checkpoint
+        # T066: Load checkpoint on startup
         checkpoint = store.get_checkpoint()
-        log.info(
-            "Loaded checkpoint",
-            last_poll=checkpoint.last_poll_timestamp,
-            last_event=checkpoint.last_event_timestamp,
-        )
+        is_first_run = checkpoint.is_empty()
+
+        if is_first_run:
+            log.info("First run detected, no previous checkpoint found")
+        else:
+            log.info(
+                "Loaded checkpoint",
+                last_poll=checkpoint.last_poll_timestamp,
+                last_event=checkpoint.last_event_timestamp,
+            )
 
         # Validate GitHub token
         try:
@@ -366,12 +387,18 @@ def _run_once_impl(
             )
             raise typer.Exit(ExitCode.AUTH_ERROR) from e
 
-        # Calculate 'since' for notifications
+        # T067: Calculate 'since' for notifications with lookback_window for first run
         since = checkpoint.last_event_timestamp
         if since is None:
-            # First run: look back by lookback_window (default 1 hour)
-            lookback = getattr(cfg.github, "lookback_window", 3600)
+            # First run: look back by lookback_window from config (default 3600s = 1 hour)
+            lookback = cfg.github.lookback_window
             since = datetime.now(UTC) - timedelta(seconds=lookback)
+            log.info(
+                "First run: looking back %d seconds",
+                lookback,
+                lookback_window=lookback,
+                since=since,
+            )
 
         # Fetch and process notifications
         events_processed = 0
@@ -400,10 +427,10 @@ def _run_once_impl(
             )
             raise typer.Exit(ExitCode.FATAL_ERROR) from e
 
-        # Update checkpoint
+        # T068: Update checkpoint atomically after successful poll cycle
         checkpoint.last_poll_timestamp = datetime.now(UTC)
-        store.save_checkpoint(checkpoint)
-        log.info("Updated checkpoint", last_poll=checkpoint.last_poll_timestamp)
+        save_checkpoint_atomic(store, checkpoint)
+        log.info("Saved checkpoint", last_poll=checkpoint.last_poll_timestamp)
 
         # Report results
         typer.echo()
@@ -673,7 +700,7 @@ def _signal_handler(signum: int, _frame: object) -> None:
     typer.echo(f"\n⚡ Received {signal_name}, shutting down gracefully...")
 
 
-def _run_daemon_impl(  # noqa: PLR0915
+def _run_daemon_impl(  # noqa: PLR0912, PLR0915
     cfg: Config,
     state_dir: Path | None,
     dry_run: bool,
@@ -682,11 +709,18 @@ def _run_daemon_impl(  # noqa: PLR0915
 ) -> None:
     """Implementation of continuous polling daemon.
 
+    Implements US3 features:
+    - Checkpoint load on startup for resume
+    - Lookback window for first run (from config)
+    - Poll interval with jitter (0-10% random)
+    - Checkpoint atomic save after each poll cycle
+    - Graceful shutdown on SIGTERM/SIGINT
+
     Args:
         cfg: Configuration object
         state_dir: State directory
         dry_run: Whether to skip action execution
-        poll_interval: Seconds between poll cycles
+        poll_interval: Seconds between poll cycles (T070: can be overridden via CLI)
         log: Logger instance
     """
     global _shutdown_requested  # noqa: PLW0603
@@ -727,6 +761,19 @@ def _run_daemon_impl(  # noqa: PLR0915
     store = StateStore(db_path)
     log.info("Initialized state store", path=str(db_path))
 
+    # T066: Load checkpoint on startup
+    checkpoint = store.get_checkpoint()
+    is_first_run = checkpoint.is_empty()
+
+    if is_first_run:
+        log.info("First run detected, no previous checkpoint found")
+    else:
+        log.info(
+            "Resuming from checkpoint",
+            last_poll=checkpoint.last_poll_timestamp,
+            last_event=checkpoint.last_event_timestamp,
+        )
+
     # Validate GitHub token once at startup
     try:
         asyncio.run(_validate_auth(log))
@@ -748,15 +795,21 @@ def _run_daemon_impl(  # noqa: PLR0915
             cycles += 1
             log.info("Starting poll cycle", cycle=cycles)
 
-            # Load checkpoint
+            # Reload checkpoint for each cycle (in case of external changes)
             checkpoint = store.get_checkpoint()
 
-            # Calculate 'since' for notifications
+            # T067: Calculate 'since' with lookback_window for first run
             since = checkpoint.last_event_timestamp
             if since is None:
-                # First run: look back by lookback_window (default 1 hour)
-                lookback = getattr(cfg.github, "lookback_window", 3600)
+                # First run: look back by lookback_window from config
+                lookback = cfg.github.lookback_window
                 since = datetime.now(UTC) - timedelta(seconds=lookback)
+                log.info(
+                    "First run: looking back %d seconds",
+                    lookback,
+                    lookback_window=lookback,
+                    since=since,
+                )
 
             try:
                 results = asyncio.run(
@@ -772,9 +825,9 @@ def _run_daemon_impl(  # noqa: PLR0915
                 total_actions += results["actions_executed"]
                 total_errors += results["errors"]
 
-                # Update checkpoint
+                # T068: Atomic checkpoint save after each successful poll cycle
                 checkpoint.last_poll_timestamp = datetime.now(UTC)
-                store.save_checkpoint(checkpoint)
+                save_checkpoint_atomic(store, checkpoint)
 
             except Exception:
                 log.exception("Poll cycle failed", cycle=cycles)
@@ -783,10 +836,15 @@ def _run_daemon_impl(  # noqa: PLR0915
             if _shutdown_requested:
                 break
 
-            # Sleep with jitter (0-10% of poll_interval)
-            jitter = random.uniform(0, poll_interval * 0.1)
+            # T069: Sleep with jitter (0-10% of poll_interval)
+            jitter = random.uniform(0, poll_interval * POLL_JITTER_FRACTION)
             sleep_time = poll_interval + jitter
-            log.debug("Sleeping until next cycle", sleep_seconds=sleep_time)
+            log.debug(
+                "Sleeping until next cycle",
+                sleep_seconds=sleep_time,
+                base_interval=poll_interval,
+                jitter=jitter,
+            )
 
             # Sleep in small increments to check for shutdown signal
             sleep_end = time.time() + sleep_time
