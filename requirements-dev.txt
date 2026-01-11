@@ -1,0 +1,12 @@
+# Development dependencies
+-r requirements.txt
+
+# Testing
+pytest==8.0.0
+pytest-httpx==0.30.0
+pytest-cov==4.1.0
+freezegun==1.2.2
+
+# Linting and formatting
+ruff==0.1.14
+pyright==1.1.350

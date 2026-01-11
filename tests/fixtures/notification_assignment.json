@@ -1,0 +1,24 @@
+{
+  "id": "234567890",
+  "unread": true,
+  "reason": "assign",
+  "updated_at": "2026-01-10T14:00:00Z",
+  "last_read_at": null,
+  "subject": {
+    "title": "Feature request: Add dark mode",
+    "url": "https://api.github.com/repos/octocat/hello-world/issues/99",
+    "latest_comment_url": null,
+    "type": "Issue"
+  },
+  "repository": {
+    "id": 1296269,
+    "name": "hello-world",
+    "full_name": "octocat/hello-world",
+    "owner": {
+      "login": "octocat",
+      "id": 1
+    },
+    "html_url": "https://github.com/octocat/hello-world"
+  },
+  "url": "https://api.github.com/notifications/threads/234567890"
+}

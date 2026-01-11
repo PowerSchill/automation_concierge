@@ -1,0 +1,24 @@
+{
+  "id": "123456789",
+  "unread": true,
+  "reason": "mention",
+  "updated_at": "2026-01-10T15:30:00Z",
+  "last_read_at": null,
+  "subject": {
+    "title": "Bug: Something is broken",
+    "url": "https://api.github.com/repos/octocat/hello-world/issues/42",
+    "latest_comment_url": "https://api.github.com/repos/octocat/hello-world/issues/comments/987654",
+    "type": "Issue"
+  },
+  "repository": {
+    "id": 1296269,
+    "name": "hello-world",
+    "full_name": "octocat/hello-world",
+    "owner": {
+      "login": "octocat",
+      "id": 1
+    },
+    "html_url": "https://github.com/octocat/hello-world"
+  },
+  "url": "https://api.github.com/notifications/threads/123456789"
+}

@@ -1,0 +1,33 @@
+{
+  "id": 1,
+  "number": 42,
+  "title": "Bug: Something is broken",
+  "state": "open",
+  "locked": false,
+  "user": {
+    "login": "reporter",
+    "id": 2
+  },
+  "labels": [
+    {
+      "id": 100,
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    },
+    {
+      "id": 101,
+      "name": "priority:high",
+      "color": "ff0000",
+      "description": "High priority issue"
+    }
+  ],
+  "assignees": [],
+  "created_at": "2026-01-09T10:00:00Z",
+  "updated_at": "2026-01-10T15:30:00Z",
+  "closed_at": null,
+  "body": "## Description\n\nSomething is broken when clicking the button.\n\n## Steps to reproduce\n\n1. Click the button\n2. Observe error",
+  "html_url": "https://github.com/octocat/hello-world/issues/42",
+  "comments": 3,
+  "author_association": "CONTRIBUTOR"
+}

@@ -15,15 +15,15 @@
 
 **Purpose**: Project initialization, dependencies, and tooling configuration
 
-- [ ] T001 Create project structure: `src/concierge/`, `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/fixtures/`
-- [ ] T002 Initialize Python project with pyproject.toml (Python 3.11+, dependencies: httpx, pydantic, typer, structlog, pyyaml)
-- [ ] T003 [P] Create requirements.txt with pinned versions and hashes
-- [ ] T004 [P] Configure ruff (linting/formatting) in pyproject.toml
-- [ ] T005 [P] Configure pyright (type checking) in pyproject.toml
-- [ ] T006 [P] Create pytest configuration in pyproject.toml with pytest-httpx, freezegun, pytest-cov
-- [ ] T007 Create src/concierge/__init__.py with version string
-- [ ] T008 [P] Create .gitignore for Python project (venv, __pycache__, .db files, .env)
-- [ ] T009 [P] Create CHANGELOG.md with initial structure
+- [x] T001 Create project structure: `src/concierge/`, `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/fixtures/`
+- [x] T002 Initialize Python project with pyproject.toml (Python 3.11+, dependencies: httpx, pydantic, typer, structlog, pyyaml)
+- [x] T003 [P] Create requirements.txt with pinned versions and hashes
+- [x] T004 [P] Configure ruff (linting/formatting) in pyproject.toml
+- [x] T005 [P] Configure pyright (type checking) in pyproject.toml
+- [x] T006 [P] Create pytest configuration in pyproject.toml with pytest-httpx, freezegun, pytest-cov
+- [x] T007 Create src/concierge/__init__.py with version string
+- [x] T008 [P] Create .gitignore for Python project (venv, __pycache__, .db files, .env)
+- [x] T009 [P] Create CHANGELOG.md with initial structure
 
 ---
 
@@ -35,38 +35,38 @@
 
 ### Configuration Infrastructure
 
-- [ ] T010 Create src/concierge/config/__init__.py
-- [ ] T011 Implement Pydantic models for Config schema in src/concierge/config/schema.py (Config, GitHubConfig, ActionsConfig, StateConfig, Rule, Trigger, Condition, Action per data-model.md)
-- [ ] T012 [P] Implement environment variable expansion for config values (${VAR} syntax) in src/concierge/config/loader.py
-- [ ] T013 Implement config file loader with YAML parsing and Pydantic validation in src/concierge/config/loader.py
-- [ ] T014 Implement config discovery (--config, $CONCIERGE_CONFIG, ./concierge.yaml, ~/.concierge/config.yaml) in src/concierge/config/loader.py
+- [x] T010 Create src/concierge/config/__init__.py
+- [x] T011 Implement Pydantic models for Config schema in src/concierge/config/schema.py (Config, GitHubConfig, ActionsConfig, StateConfig, Rule, Trigger, Condition, Action per data-model.md)
+- [x] T012 [P] Implement environment variable expansion for config values (${VAR} syntax) in src/concierge/config/loader.py
+- [x] T013 Implement config file loader with YAML parsing and Pydantic validation in src/concierge/config/loader.py
+- [x] T014 Implement config discovery (--config, $CONCIERGE_CONFIG, ./concierge.yaml, ~/.concierge/config.yaml) in src/concierge/config/loader.py
 
 ### State Store Infrastructure
 
-- [ ] T015 Create src/concierge/state/__init__.py
-- [ ] T016 Implement SQLite state store with schema initialization in src/concierge/state/store.py (tables: schema_version, checkpoints, processed_events, action_history, audit_log)
-- [ ] T017 Implement schema migrations framework in src/concierge/state/migrations.py
-- [ ] T018 [P] Implement Checkpoint model and checkpoint save/load operations in src/concierge/state/checkpoint.py
-- [ ] T019 Implement file permissions (chmod 600) on database creation in src/concierge/state/store.py
+- [x] T015 Create src/concierge/state/__init__.py
+- [x] T016 Implement SQLite state store with schema initialization in src/concierge/state/store.py (tables: schema_version, checkpoints, processed_events, action_history, audit_log)
+- [x] T017 Implement schema migrations framework in src/concierge/state/migrations.py
+- [x] T018 [P] Implement Checkpoint model and checkpoint save/load operations in src/concierge/state/checkpoint.py
+- [x] T019 Implement file permissions (chmod 600) on database creation in src/concierge/state/store.py
 
 ### Logging Infrastructure
 
-- [ ] T020 Create src/concierge/logging/__init__.py
-- [ ] T021 Implement structured JSON logging configuration with structlog in src/concierge/logging/audit.py
-- [ ] T022 Implement secret redaction for GITHUB_TOKEN and webhook URLs in log output in src/concierge/logging/audit.py
+- [x] T020 Create src/concierge/logging/__init__.py
+- [x] T021 Implement structured JSON logging configuration with structlog in src/concierge/logging/audit.py
+- [x] T022 Implement secret redaction for GITHUB_TOKEN and webhook URLs in log output in src/concierge/logging/audit.py
 
 ### CLI Skeleton
 
-- [ ] T023 Create src/concierge/cli.py with Typer app skeleton
-- [ ] T024 Implement `concierge --help` and `--version` commands in src/concierge/cli.py
-- [ ] T025 Implement `concierge validate` command (loads and validates config, exits with code 0/1) in src/concierge/cli.py
-- [ ] T026 Implement exit codes (0: success, 1: config error, 2: auth error, 3: partial failure, 4: fatal) in src/concierge/cli.py
-- [ ] T027 Create __main__.py entry point in src/concierge/__main__.py
+- [x] T023 Create src/concierge/cli.py with Typer app skeleton
+- [x] T024 Implement `concierge --help` and `--version` commands in src/concierge/cli.py
+- [x] T025 Implement `concierge validate` command (loads and validates config, exits with code 0/1) in src/concierge/cli.py
+- [x] T026 Implement exit codes (0: success, 1: config error, 2: auth error, 3: partial failure, 4: fatal) in src/concierge/cli.py
+- [x] T027 Create __main__.py entry point in src/concierge/__main__.py
 
 ### Shared Test Infrastructure
 
-- [ ] T028 Create tests/conftest.py with shared fixtures (temp config files, mock time, test database)
-- [ ] T029 [P] Create tests/fixtures/ directory with sample GitHub API response JSON files
+- [x] T028 Create tests/conftest.py with shared fixtures (temp config files, mock time, test database)
+- [x] T029 [P] Create tests/fixtures/ directory with sample GitHub API response JSON files
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -80,45 +80,45 @@
 
 ### GitHub Client (required for event ingestion)
 
-- [ ] T030 Create src/concierge/github/__init__.py
-- [ ] T031 Implement GitHub authentication with GITHUB_TOKEN env var in src/concierge/github/auth.py
-- [ ] T032 Implement token scope validation (GET /user, check scopes) in src/concierge/github/auth.py
-- [ ] T033 Implement GitHub API client with httpx in src/concierge/github/client.py (GET /notifications, GET /rate_limit)
-- [ ] T034 Implement rate limit checking and pause/resume logic in src/concierge/github/client.py
-- [ ] T035 Implement pagination handling (Link header parsing) in src/concierge/github/client.py
+- [x] T030 Create src/concierge/github/__init__.py
+- [x] T031 Implement GitHub authentication with GITHUB_TOKEN env var in src/concierge/github/auth.py
+- [x] T032 Implement token scope validation (GET /user, check scopes) in src/concierge/github/auth.py
+- [x] T033 Implement GitHub API client with httpx in src/concierge/github/client.py (GET /notifications, GET /rate_limit)
+- [x] T034 Implement rate limit checking and pause/resume logic in src/concierge/github/client.py
+- [x] T035 Implement pagination handling (Link header parsing) in src/concierge/github/client.py
 
 ### Event Normalization
 
-- [ ] T036 Create Pydantic Event model in src/concierge/github/events.py (per data-model.md: Event, EventSource, EventType enum)
-- [ ] T037 Implement notification-to-Event normalization in src/concierge/github/events.py
-- [ ] T038 Implement event ID generation (notif_{github_id}) in src/concierge/github/events.py
+- [x] T036 Create Pydantic Event model in src/concierge/github/events.py (per data-model.md: Event, EventSource, EventType enum)
+- [x] T037 Implement notification-to-Event normalization in src/concierge/github/events.py
+- [x] T038 Implement event ID generation (notif_{github_id}) in src/concierge/github/events.py
 
 ### Rules Engine (event-type matching only for US1)
 
-- [ ] T039 Create src/concierge/rules/__init__.py
-- [ ] T040 Create Pydantic Rule and Match models in src/concierge/rules/schema.py
-- [ ] T041 Implement event-type matcher in src/concierge/rules/matchers.py
-- [ ] T042 Implement rule evaluation engine in src/concierge/rules/engine.py (evaluate Event against list of Rules, return list of Matches)
+- [x] T039 Create src/concierge/rules/__init__.py
+- [x] T040 Create Pydantic Rule and Match models in src/concierge/rules/schema.py
+- [x] T041 Implement event-type matcher in src/concierge/rules/matchers.py
+- [x] T042 Implement rule evaluation engine in src/concierge/rules/engine.py (evaluate Event against list of Rules, return list of Matches)
 
 ### Action Execution (console only for US1)
 
-- [ ] T043 Create src/concierge/actions/__init__.py
-- [ ] T044 Create ActionResult model in src/concierge/actions/executor.py (per data-model.md)
-- [ ] T045 Implement console action (print to stdout) in src/concierge/actions/console.py
-- [ ] T046 Implement action executor dispatch in src/concierge/actions/executor.py
+- [x] T043 Create src/concierge/actions/__init__.py
+- [x] T044 Create ActionResult model in src/concierge/actions/executor.py (per data-model.md)
+- [x] T045 Implement console action (print to stdout) in src/concierge/actions/console.py
+- [x] T046 Implement action executor dispatch in src/concierge/actions/executor.py
 
 ### State Management (dedupe for US1)
 
-- [ ] T047 Implement ProcessedEvent model and is_processed() check in src/concierge/state/store.py
-- [ ] T048 Implement mark_processed() with disposition in src/concierge/state/store.py
-- [ ] T049 Implement ActionHistory save for event+rule deduplication in src/concierge/state/store.py
+- [x] T047 Implement ProcessedEvent model and is_processed() check in src/concierge/state/store.py
+- [x] T048 Implement mark_processed() with disposition in src/concierge/state/store.py
+- [x] T049 Implement ActionHistory save for event+rule deduplication in src/concierge/state/store.py
 
 ### Main Loop (single poll cycle for US1)
 
-- [ ] T050 Implement `concierge run-once` command in src/concierge/cli.py (single poll cycle: fetch → normalize → evaluate → execute → persist)
-- [ ] T051 Implement `concierge run` command with continuous polling loop in src/concierge/cli.py
-- [ ] T052 [US1] Implement dry-run mode (--dry-run flag) in src/concierge/cli.py (logs actions without executing, marks disposition as "dry_run")
-- [ ] T053 [US1] Implement graceful shutdown (SIGTERM/SIGINT handlers) in src/concierge/cli.py
+- [x] T050 Implement `concierge run-once` command in src/concierge/cli.py (single poll cycle: fetch → normalize → evaluate → execute → persist)
+- [x] T051 Implement `concierge run` command with continuous polling loop in src/concierge/cli.py
+- [x] T052 [US1] Implement dry-run mode (--dry-run flag) in src/concierge/cli.py (logs actions without executing, marks disposition as "dry_run")
+- [x] T053 [US1] Implement graceful shutdown (SIGTERM/SIGINT handlers) in src/concierge/cli.py
 
 **Checkpoint**: User Story 1 complete - user can define mention rule and receive console notifications
 
