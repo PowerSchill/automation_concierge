@@ -1,0 +1,169 @@
+# Personal Automation Concierge - Example Configuration
+# ======================================================
+#
+# Copy this file to ~/.config/concierge/config.yaml
+# and customize it for your workflow.
+#
+# Required environment variables:
+#   - GITHUB_TOKEN: Personal Access Token with 'notifications' and 'repo' scopes
+#   - SLACK_WEBHOOK_URL: (optional) Slack webhook URL for notifications
+
+version: 1
+
+# =============================================================================
+# GitHub Settings
+# =============================================================================
+github:
+  # How often to poll for new notifications (30-300 seconds)
+  poll_interval: 60
+
+  # How far back to look on first run (default: 1 hour)
+  lookback_window: 3600
+
+# =============================================================================
+# Action Configurations
+# =============================================================================
+actions:
+  # Slack webhook for notifications
+  slack:
+    # Use environment variable for security
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+
+  # GitHub comment action (disabled by default for safety)
+  github_comment:
+    enabled: false
+
+# =============================================================================
+# State Storage Settings (optional)
+# =============================================================================
+state:
+  # How long to retain processed event records (days)
+  retention_days: 30
+
+# =============================================================================
+# Rules
+# =============================================================================
+rules:
+  # -------------------------------------------------------------------------
+  # Rule 1: Notify when you're @mentioned
+  # -------------------------------------------------------------------------
+  - id: mention-notify
+    name: "Notify on mentions"
+    enabled: true
+    description: "Send a notification when someone @mentions you"
+    trigger:
+      event_type: mention
+    action:
+      type: console
+      message: "🔔 You were mentioned in {{ event.repo_full_name }}#{{ event.entity_number }}: {{ event.entity_title }}"
+
+  # -------------------------------------------------------------------------
+  # Rule 2: Notify when assigned to an issue or PR
+  # -------------------------------------------------------------------------
+  - id: assignment-notify
+    name: "Notify on assignments"
+    enabled: true
+    description: "Send a notification when you're assigned to an issue or PR"
+    trigger:
+      event_type: assignment
+    action:
+      type: console
+      message: "📌 You were assigned to {{ event.repo_full_name }}#{{ event.entity_number }}: {{ event.entity_title }}"
+
+  # -------------------------------------------------------------------------
+  # Rule 3: Notify when requested to review a PR
+  # -------------------------------------------------------------------------
+  - id: review-request-notify
+    name: "Notify on review requests"
+    enabled: true
+    description: "Send a notification when you're requested to review a PR"
+    trigger:
+      event_type: review_request
+    action:
+      type: console
+      message: "👀 Review requested on {{ event.repo_full_name }}#{{ event.entity_number }}: {{ event.entity_title }}"
+
+  # -------------------------------------------------------------------------
+  # Rule 4: Slack notification for mentions (requires SLACK_WEBHOOK_URL)
+  # -------------------------------------------------------------------------
+  - id: mention-slack
+    name: "Slack notification for mentions"
+    enabled: false # Enable after configuring Slack webhook
+    description: "Send a Slack message when someone @mentions you"
+    trigger:
+      event_type: mention
+    action:
+      type: slack
+      message: "🔔 You were mentioned in <{{ event.entity_url }}|{{ event.repo_full_name }}#{{ event.entity_number }}>: {{ event.entity_title }}"
+
+  # -------------------------------------------------------------------------
+  # Rule 5: Stale PR reminder (time-based)
+  # -------------------------------------------------------------------------
+  - id: stale-pr-reminder
+    name: "Stale PR reminder"
+    enabled: false # Enable for stale PR detection
+    description: "Notify when a PR has been open for 48+ hours without review"
+    trigger:
+      event_type: pr_open
+      conditions:
+        - type: time_since
+          field: created_at
+          threshold: 48h
+        - type: no_activity
+          activity: review
+    action:
+      type: console
+      message: "⏰ Stale PR: {{ event.repo_full_name }}#{{ event.entity_number }} has been open for 48+ hours with no review"
+
+  # -------------------------------------------------------------------------
+  # Rule 6: Label-based notification
+  # -------------------------------------------------------------------------
+  - id: needs-response-alert
+    name: "Needs response alert"
+    enabled: false # Enable for label change detection
+    description: "Notify when the 'needs-response' label is added to an issue"
+    trigger:
+      event_type: label_change
+      conditions:
+        - type: label_added
+          label: needs-response
+    action:
+      type: console
+      message: "🏷️ 'needs-response' label added to {{ event.repo_full_name }}#{{ event.entity_number }}"
+
+  # -------------------------------------------------------------------------
+  # Rule 7: Security alert notification
+  # -------------------------------------------------------------------------
+  - id: security-alert
+    name: "Security alert notification"
+    enabled: false # Enable for security alerts
+    description: "Notify on security-related events"
+    trigger:
+      event_type: label_change
+      conditions:
+        - type: label_added
+          label: security
+    action:
+      type: slack
+      message: "🚨 SECURITY: Label 'security' added to <{{ event.entity_url }}|{{ event.repo_full_name }}#{{ event.entity_number }}>"
+# =============================================================================
+# Tips
+# =============================================================================
+#
+# 1. Start with console actions to test your rules:
+#    concierge run-once --dry-run --verbose
+#
+# 2. Check your configuration:
+#    concierge validate
+#
+# 3. View what actions were taken:
+#    concierge audit --limit 10
+#
+# 4. Check current status:
+#    concierge status
+#
+# 5. For GitHub comment actions, add 'opt_in: true' to the action config:
+#    action:
+#      type: github_comment
+#      opt_in: true
+#      message: "Your message here"

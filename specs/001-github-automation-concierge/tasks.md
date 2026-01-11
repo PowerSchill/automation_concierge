@@ -264,14 +264,14 @@
 
 **Purpose**: Documentation, cleanup, and final validation
 
-- [ ] T092 [P] Create sample config file at examples/concierge.yaml
-- [ ] T093 [P] Create README.md with installation, configuration, and usage instructions
-- [ ] T094 Update CHANGELOG.md with v1.0.0 release notes
-- [ ] T095 [P] Add docstrings to all public functions per constitution
-- [ ] T096 Run ruff and pyright, fix all errors
-- [ ] T097 Run pytest with coverage, ensure 80%+ on business logic (rules, actions, state)
-- [ ] T098 Validate quickstart.md scenarios work end-to-end
-- [ ] T099 Security review: verify no plaintext secrets in logs, file permissions, webhook URL redaction
+- [x] T092 [P] Create sample config file at examples/concierge.yaml
+- [x] T093 [P] Create README.md with installation, configuration, and usage instructions
+- [x] T094 Update CHANGELOG.md with v1.0.0 release notes
+- [x] T095 [P] Add docstrings to all public functions per constitution
+- [x] T096 Run ruff and pyright, fix all errors
+- [x] T097 Run pytest with coverage, ensure 80%+ on business logic (rules, actions, state)
+- [x] T098 Validate quickstart.md scenarios work end-to-end
+- [x] T099 Security review: verify no plaintext secrets in logs, file permissions, webhook URL redaction
 
 ---
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "concierge"
-version = "0.1.0"
+version = "1.0.0"
 description = "Personal Automation Concierge - GitHub activity monitoring with rule-based notifications"
 readme = "README.md"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["github", "automation", "notifications", "cli"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
